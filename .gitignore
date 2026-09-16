@@ -24,7 +24,8 @@ temp/
 *.pid
 *.seed
 nohup.out
-core
+/core
+core.[0-9]*
 *.stackdump
 .idea/
 .vscode/
