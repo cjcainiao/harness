@@ -5,6 +5,7 @@ import json
 import logging
 import queue
 import sys
+import threading
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,8 @@ from typing import Any
 import structlog
 
 _listener: QueueListener | None = None
+_initialized = False
+_initialize_lock = threading.Lock()
 
 class _StructlogQueueHandler(QueueHandler):
     def prepare(self, record: logging.LogRecord) -> logging.LogRecord:
@@ -151,13 +154,42 @@ def configure_logging(
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
+# 初始化日志，全局只执行一次
+def initialize_logging() -> None:
+    global _initialized
+
+    if _initialized:
+        return
+
+    with _initialize_lock:
+        if _initialized:
+            return
+
+        # 函数内导入，避免日志模块与配置模块循环依赖
+        from harness.config.app_config import get_app_config
+
+        config = get_app_config()
+        configure_logging(
+            level=config.system.log_level,
+            env=config.system.env,
+            log_dir=config.system.log_dir,
+            max_bytes=config.system.log_max_bytes,
+            backup_count=config.system.log_backup_count,
+            console=config.system.log_console,
+        )
+        _initialized = True
+
 # 关闭日志，把队列里剩余的记录写完
 def shutdown_logging() -> None:
-    global _listener
-    if _listener is not None:
-        _listener.stop()
-        _listener = None
+    global _listener, _initialized
+
+    with _initialize_lock:
+        if _listener is not None:
+            _listener.stop()
+            _listener = None
+        _initialized = False
 
 # 获取 structlog 日志器
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
+    initialize_logging()
     return structlog.get_logger(name)

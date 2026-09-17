@@ -46,6 +46,7 @@ $RECYCLE.BIN/
 coverage/
 
 # ============ backend（Python） ============
+/backend/test/
 .venv/
 venv/
 backend/ENV/

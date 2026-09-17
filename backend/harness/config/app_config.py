@@ -8,7 +8,8 @@ from typing import Any, Self
 import yaml
 from pydantic import BaseModel, Field
 
-from harness.config.system_config import load_system_config_from_dict, systemConfig
+from harness.config.model_config import ModelConfig
+from harness.config.system_config import systemConfig
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 # 全局配置类
 class AppConfig(BaseModel):
     system: systemConfig = Field(default_factory=systemConfig, description="系统配置")
+    models: list[ModelConfig] = Field(default_factory=list, description="模型配置")
 
     # 解析配置文件路径，优先级：参数 > 环境变量 > 默认路径
     @classmethod
@@ -52,10 +54,7 @@ class AppConfig(BaseModel):
         cls._check_config_version(config_data, resolved_path)
         config_data = cls.resolve_env_variables(config_data)
 
-        # 加载系统配置
-        if "system" in config_data:
-            load_system_config_from_dict(config_data['system'])
-
+        # 直接映射到字段上
         return cls.model_validate(config_data)
 
     # 校验配置版本，低于 config.example.yaml 时告警

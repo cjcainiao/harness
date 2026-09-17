@@ -1,7 +1,7 @@
 # 全局配置文件
 
 # 配置版本
-config_version: 1.0
+config_version: 1
 
 # 系统配置
 system:
@@ -11,8 +11,30 @@ system:
   host: 127.0.0.1        # 服务监听地址
   port: 8000             # 服务监听端口，范围 1-65535
   api_prefix: /api       # 接口统一前缀
+  allow_origins: ["http://localhost:5173", "http://127.0.0.1:5173"]  # 允许的请求来源
+  allow_credentials: true  # 是否允许携带身份凭证
+  allow_methods: ["*"]   # 允许的请求方法
+  allow_headers: ["*"]   # 允许的请求头
   log_level: INFO        # 日志级别：DEBUG / INFO / WARNING / ERROR / CRITICAL
   log_dir: logs          # 日志目录，相对路径按 backend 解析
   log_max_bytes: 10485760   # 单个日志文件上限（字节），0 表示不滚动
   log_backup_count: 7    # 滚动保留的历史文件数，0 表示只留当前文件
   log_console: null      # 是否输出到控制台，null 表示按 env 自动（prod 关闭）
+
+# 模型配置，第一个为默认模型
+models:
+  - name: deepseek # 模型名称
+    display_name: DeepSeek Flash # 显示名称
+    use: harness.models.deepseek_provider:DeepSeekChatModel # 模型实现
+    model: deepseek-flash # 实际模型名称
+    base_url: https://api.deepseek.com # 服务地址
+    api_key: $DEEPSEEK_API_KEY # 服务密钥
+    timeout: 60.0 # 请求超时时间
+    max_retries: 2 # 最大重试次数
+    max_tokens: 8192 # 最大输出令牌数
+    supports_thinking: true # 是否支持推理
+    supports_reasoning_effort: true # 是否支持推理程度
+    when_thinking_enabled: {extra_body: {thinking: {type: enabled}}} # 启用推理参数
+    when_thinking_disabled: {extra_body: {thinking: {type: disabled}}} # 关闭推理参数
+    supports_vision: true # 是否支持视觉
+    context_window: 1048576 # 模型上下文长度
