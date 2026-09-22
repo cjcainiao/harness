@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.exceptions import register_exception_handlers
-from app.gateway import chat_router
+from app.gateway import chat_router, config_router
 from harness.config.app_config import get_app_config
 from harness.core.logger import get_logger, shutdown_logging
 
@@ -44,8 +44,11 @@ def create_app() -> FastAPI:
     # 注册全局异常处理
     register_exception_handlers(application)
 
+    # 路由前缀
+    api_prefix = config.system.api_prefix
     # 注册接口路由
-    application.include_router(chat_router)
+    application.include_router(chat_router, prefix=api_prefix)
+    application.include_router(config_router, prefix=api_prefix)
 
     # CORS 配置，解决跨域问题
     application.add_middleware(

@@ -5,13 +5,16 @@ import os
 from pathlib import Path
 from typing import Any, Self
 
-import yaml
+from ruamel.yaml import YAML
 from pydantic import BaseModel, Field
 
 from harness.config.model_config import ModelConfig
 from harness.config.system_config import systemConfig
 
 logger = logging.getLogger(__name__)
+
+# 加载 yaml
+_yaml_safe = YAML(typ="safe")
 
 
 # 全局配置类
@@ -48,7 +51,7 @@ class AppConfig(BaseModel):
     def from_file(cls, config_path: str | None = None) -> Self:
         resolved_path = cls.resolve_config_path(config_path)
         with open(resolved_path, encoding="utf-8") as f:
-            config_data = yaml.safe_load(f) or {}
+            config_data = _yaml_safe.load(f) or {}
 
         # 先校验配置版本，再解析环境变量，最后交给 pydantic 校验
         cls._check_config_version(config_data, resolved_path)
@@ -82,7 +85,7 @@ class AppConfig(BaseModel):
 
         try:
             with open(example_path, encoding="utf-8") as f:
-                example_data = yaml.safe_load(f)
+                example_data = _yaml_safe.load(f)
             raw = example_data.get("config_version", 0) if example_data else 0
             try:
                 example_version = int(raw)

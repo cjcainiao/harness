@@ -1,0 +1,78 @@
+/* 全局初始化样式 */
+
+/* 盒模型统一 */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* 清除默认边距 */
+html,
+body,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+ul,
+ol,
+li,
+figure,
+blockquote,
+dl,
+dd {
+  margin: 0;
+  padding: 0;
+}
+
+ul,
+ol {
+  list-style: none;
+}
+
+/* 视口铺满，去掉页面级滚动条 */
+html,
+body,
+#app {
+  height: 100%;
+}
+body {
+  overflow: hidden;
+}
+
+/* 页面基础样式 */
+body {
+  background-color: #f5f7fa;
+  color: #303133;
+  font-family:
+    'Helvetica Neue',
+    Helvetica,
+    'PingFang SC',
+    'Microsoft YaHei',
+    Arial,
+    sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 链接与图片 */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+img {
+  display: block;
+  max-width: 100%;
+}
+
+/* 表单控件继承字体 */
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
