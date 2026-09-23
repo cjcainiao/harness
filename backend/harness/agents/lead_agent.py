@@ -9,6 +9,7 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.tools import BaseTool
 
+from harness.agents.middlewares.builder import build_agent_middleware
 from harness.config.app_config import AppConfig, get_app_config
 from harness.models.factory import ReasoningEffort, create_chat_model
 
@@ -44,7 +45,7 @@ def create_lead_agent(
     return create_agent(
         model=model,
         tools=list(tools or ()),
-        middleware=list(middleware or ()),
+        middleware=build_agent_middleware(middleware),
         system_prompt=system_prompt if system_prompt is not None else DEFAULT_SYSTEM_PROMPT,
         debug=config.system.debug,
         name="lead-agent",

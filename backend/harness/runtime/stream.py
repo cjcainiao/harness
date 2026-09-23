@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware
+from langchain_core.messages import ToolMessage
 from langgraph.errors import GraphBubbleUp
 
 from harness.agents.lead_agent import Tool, create_lead_agent
@@ -62,6 +63,10 @@ def _parse_message_events(
     metadata: dict[str, Any] | None,
     namespace: Sequence[str] | None,
 ) -> list[dict[str, Any]]:
+    # 工具结果由工具调用中间件发送
+    if isinstance(message, ToolMessage):
+        return []
+
     events: list[dict[str, Any]] = []
 
     try:

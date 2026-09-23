@@ -13,5 +13,6 @@ dependencies = [
     "pydantic>=2.13.5",
     "ruamel-yaml>=0.19.1",
     "structlog>=26.1.0",
+    "tzdata>=2026.4",
     "uvicorn[standard]>=0.53.0",
 ]

@@ -31,6 +31,11 @@ def _restore_reasoning_content(
 
 # DeepSeek 聊天模型实现类
 class DeepSeekChatModel(ChatDeepSeek):
+    # 映射推理强度为模型参数
+    @staticmethod
+    def reasoning_model_kwargs(effort: str) -> dict[str, Any]:
+        return {"reasoning_effort": effort}
+
     # 允许 LangChain 序列化模型配置
     @classmethod
     def is_lc_serializable(cls) -> bool:
@@ -40,8 +45,8 @@ class DeepSeekChatModel(ChatDeepSeek):
     @property
     def lc_secrets(self) -> dict[str, str]:
         return {
-            "api_key": "DEEPSEEK_API_KEY", # DeepSeek 密钥字段
-            "openai_api_key": "DEEPSEEK_API_KEY", # OpenAI 兼容密钥字段
+            "api_key": "DEEPSEEK_API_KEY",
+            "openai_api_key": "DEEPSEEK_API_KEY",
         }
 
     # 构建请求并恢复多轮对话中的推理内容

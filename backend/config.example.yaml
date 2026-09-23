@@ -1,7 +1,7 @@
 # 全局配置文件
 
 # 配置版本
-config_version: 1
+config_version: 3
 
 # 系统配置
 system:
@@ -33,8 +33,27 @@ models:
     max_retries: 2 # 最大重试次数
     max_tokens: 8192 # 最大输出令牌数
     supports_thinking: true # 是否支持推理
-    supports_reasoning_effort: true # 是否支持推理程度
+    reasoning_levels: [low, high, max] # 模型支持的推理强度
     when_thinking_enabled: {extra_body: {thinking: {type: enabled}}} # 启用推理参数
     when_thinking_disabled: {extra_body: {thinking: {type: disabled}}} # 关闭推理参数
     supports_vision: true # 是否支持视觉
     context_window: 1048576 # 模型上下文长度
+
+# 工具分组，仅用于分类和筛选
+tool_groups:
+  - name: system
+
+# 工具列表
+tools:
+  - name: current_time # 工具名称
+    group: system # 所属工具组
+    use: harness.tools.system.current_time:current_time # 工具实现
+    enabled: true # 是否启用
+    exposure: direct # 模型可见方式：direct 直接提供，search 按需查找
+    aliases: [当前时间, 今天日期] # 查找别名
+    settings: {} # 工具额外配置
+
+# 工具查找配置
+tool_search:
+  enabled: false
+  max_results: 5

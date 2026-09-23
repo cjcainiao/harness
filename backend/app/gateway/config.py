@@ -20,7 +20,7 @@ class ModelInfo(BaseModel):
     use: str = Field(description="模型实现类")
     model: str = Field(description="服务商模型名称")
     supports_thinking: bool = Field(default=False, description="是否支持推理")
-    supports_reasoning_effort: bool = Field(default=False, description="是否支持推理程度")
+    reasoning_levels: list[str] = Field(default_factory=list, description="模型支持的推理强度")
     supports_vision: bool = Field(default=False, description="是否支持视觉")
     context_window: int | None = Field(default=None, description="模型上下文长度")
 
@@ -38,7 +38,7 @@ async def get_models() -> Result[list[ModelInfo]]:
             use=model.use,
             model=model.model,
             supports_thinking=model.supports_thinking,
-            supports_reasoning_effort=model.supports_reasoning_effort,
+            reasoning_levels=model.reasoning_levels,
             supports_vision=model.supports_vision,
             context_window=model.context_window,
         )
@@ -90,4 +90,3 @@ async def delete_model(name: str):
     data["models"] = remaining
     dump_yaml(config_path, data)
     return Result.success(None, "删除成功")
-

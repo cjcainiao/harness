@@ -1,27 +1,28 @@
 # 模型工厂
 
 import importlib
-from typing import Any, Literal
+from typing import Any
 
 from langchain.chat_models import BaseChatModel
 
 from harness.config.app_config import AppConfig, get_app_config
 from harness.config.model_config import ModelConfig
 
+# 档位值由模型配置校验
+type ReasoningEffort = str
 
-ReasoningEffort = Literal["low", "medium", "high"]
-
+# 不传入模型构造函数的配置字段
 _MODEL_METADATA_FIELDS = {
-    "name", # 模型配置名称
-    "display_name", # 模型显示名称
-    "description", # 模型描述
-    "use", # 模型实现类路径
-    "supports_thinking", # 是否支持推理
-    "supports_reasoning_effort", # 是否支持推理程度
-    "when_thinking_enabled", # 启用推理时追加的参数
-    "when_thinking_disabled", # 关闭推理时追加的参数
-    "supports_vision", # 是否支持视觉
-    "context_window", # 模型上下文长度
+    "name",
+    "display_name",
+    "description",
+    "use",
+    "supports_thinking",
+    "reasoning_levels",
+    "when_thinking_enabled",
+    "when_thinking_disabled",
+    "supports_vision",
+    "context_window",
 }
 
 
@@ -60,6 +61,44 @@ def _get_model_config(config: AppConfig, name: str | None) -> ModelConfig:
     return model_config
 
 
+# 校验模型与推理参数
+def validate_model_options(
+    name: str | None,
+    thinking_enabled: bool,
+    reasoning_effort: ReasoningEffort | None,
+    *,
+    app_config: AppConfig | None = None,
+) -> ModelConfig:
+    config = app_config or get_app_config()
+    model_config = _get_model_config(config, name)
+
+    if thinking_enabled and not model_config.supports_thinking:
+        raise ValueError(f"模型 {model_config.name} 不支持推理")
+    if reasoning_effort is not None:
+        if not thinking_enabled:
+            raise ValueError("设置推理程度前必须启用推理")
+        if reasoning_effort not in model_config.reasoning_levels:
+            supported = "、".join(model_config.reasoning_levels) or "无"
+            raise ValueError(f"模型 {model_config.name} 不支持推理强度 {reasoning_effort}，可选：{supported}")
+
+        model_class = resolve_model_class(model_config.use)
+        if not callable(getattr(model_class, "reasoning_model_kwargs", None)):
+            raise ValueError(f"模型 {model_config.name} 的适配类未实现推理强度参数映射")
+
+    return model_config
+
+
+# 递归合并嵌套模型参数
+def _merge_model_settings(settings: dict[str, Any], updates: dict[str, Any]) -> None:
+    for key, value in updates.items():
+        if isinstance(value, dict) and isinstance(settings.get(key), dict):
+            nested = dict(settings[key])
+            _merge_model_settings(nested, value)
+            settings[key] = nested
+        else:
+            settings[key] = value
+
+
 # 根据模型配置动态创建模型实例
 def create_chat_model(
     name: str | None = None,
@@ -70,7 +109,7 @@ def create_chat_model(
     model_overrides: dict[str, Any] | None = None,
 ) -> BaseChatModel:
     config = app_config or get_app_config()
-    model_config = _get_model_config(config, name)
+    model_config = validate_model_options(name, thinking_enabled, reasoning_effort, app_config=config)
     model_class = resolve_model_class(model_config.use)
 
     model_settings = model_config.model_dump(
@@ -79,26 +118,18 @@ def create_chat_model(
     )
 
     if model_overrides:
-        model_settings.update(
-            {
-                key: value
-                for key, value in model_overrides.items()
-                if value is not None
-            }
+        _merge_model_settings(
+            model_settings,
+            {key: value for key, value in model_overrides.items() if value is not None},
         )
 
     if thinking_enabled:
-        if not model_config.supports_thinking:
-            raise ValueError(f"模型 {model_config.name} 不支持推理")
-        model_settings.update(model_config.when_thinking_enabled or {})
+        _merge_model_settings(model_settings, model_config.when_thinking_enabled or {})
     else:
-        model_settings.update(model_config.when_thinking_disabled or {})
+        _merge_model_settings(model_settings, model_config.when_thinking_disabled or {})
 
     if reasoning_effort is not None:
-        if not thinking_enabled:
-            raise ValueError("设置推理程度前必须启用推理")
-        if not model_config.supports_reasoning_effort:
-            raise ValueError(f"模型 {model_config.name} 不支持推理程度")
-        model_settings["reasoning_effort"] = reasoning_effort
+        reasoning_kwargs = model_class.reasoning_model_kwargs(reasoning_effort)
+        _merge_model_settings(model_settings, reasoning_kwargs)
 
     return model_class(**model_settings)

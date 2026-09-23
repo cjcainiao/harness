@@ -6,10 +6,11 @@ from pathlib import Path
 from typing import Any, Self
 
 from ruamel.yaml import YAML
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from harness.config.model_config import ModelConfig
 from harness.config.system_config import systemConfig
+from harness.config.tool_config import ToolConfig
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ _yaml_safe = YAML(typ="safe")
 
 
 # 全局配置类
-class AppConfig(BaseModel):
+class AppConfig(ToolConfig):
     system: systemConfig = Field(default_factory=systemConfig, description="系统配置")
     models: list[ModelConfig] = Field(default_factory=list, description="模型配置")
 
