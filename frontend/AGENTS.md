@@ -8,6 +8,8 @@
 ## 目录结构
 - 页面按模块放 `src/views/<模块>/`，模块内自包含：
   - `LayoutView.vue` 布局壳，`pages/` 放模块子页面，`components/` 放模块级组件
+  - `components/` 内按页面区块分子文件夹（如 `sidebar/`、`message/`、`input/`）
+  - 布局壳只保留分区骨架和 `router-view`，成块的内容一律封装成 `components/` 组件
   - 跨模块通用的组件才进顶层 `src/components/`
 - 通用工具放 `src/utils/`，命名 `xxxUtil.ts`（如 `sseUtil.ts`）
 - 接口请求按页面模块放 `src/api/<模块>.ts`（如 `api/chat.ts`）
