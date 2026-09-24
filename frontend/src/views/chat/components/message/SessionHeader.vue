@@ -2,7 +2,7 @@
   <header class="session-header">
     <div class="session-identity">
       <button
-        class="header-action icon-action sidebar-toggle"
+        class="header-action sidebar-toggle"
         type="button"
         aria-label="切换侧栏"
         aria-controls="chat-sidebar"
@@ -14,104 +14,37 @@
       <FolderClosed class="session-icon" :size="16" :stroke-width="1.6" aria-hidden="true" />
       <h1 class="session-title" :title="title">{{ title }}</h1>
     </div>
-
-    <div v-if="hasMessages" class="session-actions">
-      <ElDropdown trigger="click" placement="bottom-end" @command="onMenuCommand">
-        <button class="header-action icon-action" type="button" aria-label="更多会话操作">
-          <Ellipsis :size="17" :stroke-width="1.8" aria-hidden="true" />
-        </button>
-        <template #dropdown>
-          <ElDropdownMenu>
-            <ElDropdownItem command="top">回到顶部</ElDropdownItem>
-            <ElDropdownItem command="bottom">回到底部</ElDropdownItem>
-          </ElDropdownMenu>
-        </template>
-      </ElDropdown>
-
-      <ElTooltip content="复制当前页面链接" placement="bottom" :show-after="300">
-        <button class="header-action share-action" type="button" @click="copyPageLink">
-          <Share2 :size="15" :stroke-width="1.7" aria-hidden="true" />
-          <span>分享</span>
-        </button>
-      </ElTooltip>
-
-      <ElTooltip
-        :content="navigatorVisible ? '隐藏消息定位条' : '显示消息定位条'"
-        placement="bottom"
-        :show-after="300"
-      >
-        <button
-          class="header-action icon-action"
-          type="button"
-          :aria-label="navigatorVisible ? '隐藏消息定位条' : '显示消息定位条'"
-          :aria-pressed="navigatorVisible"
-          @click="emit('toggle-navigator')"
-        >
-          <List :size="16" :stroke-width="1.7" aria-hidden="true" />
-        </button>
-      </ElTooltip>
-    </div>
   </header>
 </template>
 
 <script setup lang="ts">
-import { Ellipsis, FolderClosed, List, Menu, Share2 } from 'lucide-vue-next'
-import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElMessage, ElTooltip } from 'element-plus'
-import 'element-plus/es/components/dropdown/style/css'
-import 'element-plus/es/components/dropdown-item/style/css'
-import 'element-plus/es/components/dropdown-menu/style/css'
-import 'element-plus/es/components/message/style/css'
-import 'element-plus/es/components/tooltip/style/css'
+import { FolderClosed, Menu } from 'lucide-vue-next'
 
 defineProps<{
   title: string
-  navigatorVisible: boolean
-  hasMessages: boolean
   sidebarOpen: boolean
 }>()
 const emit = defineEmits<{
-  'toggle-navigator': []
   'toggle-sidebar': []
-  'scroll-top': []
-  'scroll-bottom': []
 }>()
-
-function onMenuCommand(command: string | number | object) {
-  if (command === 'top') emit('scroll-top')
-  if (command === 'bottom') emit('scroll-bottom')
-}
-
-async function copyPageLink() {
-  try {
-    await navigator.clipboard.writeText(window.location.href)
-    ElMessage.success('页面链接已复制')
-  } catch {
-    ElMessage.error('复制失败，请重试')
-  }
-}
 </script>
 
 <style scoped>
 .session-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
   height: 44px;
   min-width: 0;
   padding: 0 17px 0 20px;
   border-bottom: 1px solid #e8e9eb;
   background: #fff;
 }
-.session-identity,
-.session-actions {
+.session-identity {
   display: flex;
   align-items: center;
-  min-width: 0;
-}
-.session-identity {
   gap: 10px;
   flex: 1;
+  min-width: 0;
 }
 .session-icon {
   flex-shrink: 0;
@@ -126,25 +59,18 @@ async function copyPageLink() {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.session-actions {
-  gap: 7px;
-  flex-shrink: 0;
-  color: #7b8188;
-}
 .header-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  width: 28px;
   height: 28px;
-  padding: 0 7px;
+  padding: 0;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: inherit;
   cursor: pointer;
-  font-size: 12px;
-  white-space: nowrap;
   transition:
     background-color 0.16s ease,
     color 0.16s ease;
@@ -164,13 +90,6 @@ async function copyPageLink() {
   outline: 2px solid #a5b6da;
   outline-offset: 1px;
 }
-.icon-action {
-  width: 28px;
-  padding: 0;
-}
-.share-action {
-  padding: 0 6px;
-}
 .sidebar-toggle {
   display: none;
 }
@@ -183,12 +102,6 @@ async function copyPageLink() {
 @media (max-width: 600px) {
   .session-header {
     padding: 0 10px 0 14px;
-  }
-  .session-actions {
-    gap: 2px;
-  }
-  .share-action span {
-    display: none;
   }
 }
 @media (max-width: 700px) {

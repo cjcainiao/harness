@@ -1,6 +1,64 @@
 <template>
   <div class="chat-input-box">
-    <div class="input-card">
+    <div
+      class="input-card"
+      :class="{ 'is-file-dragging': isFileDragging }"
+      @dragenter="onDragEnter"
+      @dragover="onDragOver"
+      @dragleave="onDragLeave"
+      @drop="onFileDrop"
+    >
+      <div v-if="isFileDragging" class="file-drop-hint" aria-hidden="true">松开以添加文件</div>
+      <input
+        ref="fileInputRef"
+        class="file-input"
+        type="file"
+        multiple
+        tabindex="-1"
+        aria-hidden="true"
+        @change="onFilesSelected"
+      />
+      <div v-if="selectedFiles.length" class="selected-files" role="list" aria-label="已选文件">
+        <div
+          v-for="(item, index) in selectedFiles"
+          :key="fileKey(item.file)"
+          class="file-chip"
+          role="listitem"
+        >
+          <img
+            v-if="item.previewUrl"
+            class="file-thumbnail"
+            :src="item.previewUrl"
+            :alt="`${item.file.name} 的缩略图`"
+          />
+          <FileIcon
+            v-else
+            class="file-card-icon"
+            :size="22"
+            :stroke-width="1.7"
+            aria-hidden="true"
+          />
+          <div class="file-chip-name">
+            <component
+              :is="fileIcons[fileKind(item.file)]"
+              class="file-type-icon"
+              :class="`is-${fileKind(item.file)}`"
+              :size="14"
+              :stroke-width="1.8"
+              aria-hidden="true"
+            />
+            <span>{{ item.file.name }}</span>
+          </div>
+          <button
+            class="file-remove-btn"
+            type="button"
+            :aria-label="`移除文件 ${item.file.name}`"
+            @click="removeFile(index)"
+          >
+            <X :size="14" aria-hidden="true" />
+          </button>
+        </div>
+      </div>
       <!-- 输入区 -->
       <textarea
         ref="textareaRef"
@@ -9,13 +67,101 @@
         rows="1"
         placeholder="规划与编程，@ 添加上下文，/ 使用命令"
         @input="autoResize"
+        @keydown.enter="onEnter"
       />
       <!-- 底部工具行 -->
       <div class="input-toolbar">
         <div class="toolbar-left">
-          <button class="tool-btn tool-icon-btn" type="button">
-            <Plus :size="15" :stroke-width="2.5" />
-          </button>
+          <ElTooltip
+            content="添加附件"
+            placement="top"
+            :show-after="300"
+            :trigger="['hover', 'focus']"
+          >
+            <button
+              class="tool-btn tool-icon-btn"
+              type="button"
+              aria-label="添加附件"
+              @click="openFilePicker"
+            >
+              <Plus :size="15" :stroke-width="2.5" aria-hidden="true" />
+            </button>
+          </ElTooltip>
+          <ElPopover
+            v-model:visible="isAccessMenuOpen"
+            placement="top-start"
+            trigger="click"
+            role="dialog"
+            :width="360"
+            :offset="10"
+            :show-arrow="true"
+            :hide-after="0"
+            :persistent="false"
+            :popper-style="{
+              padding: '6px',
+              borderRadius: '9px',
+              maxWidth: 'calc(100vw - 16px)',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)',
+            }"
+          >
+            <template #reference>
+              <button
+                class="permission-trigger"
+                :class="{ 'is-full': permissionMode === 'full' }"
+                type="button"
+                aria-haspopup="dialog"
+                :aria-expanded="isAccessMenuOpen"
+                :aria-label="`访问权限：${selectedPermission.title}`"
+              >
+                <component
+                  :is="selectedPermission.icon"
+                  :size="14"
+                  :stroke-width="1.8"
+                  aria-hidden="true"
+                />
+                <span>{{ selectedPermission.shortLabel }}</span>
+              </button>
+            </template>
+
+            <div
+              class="permission-menu"
+              aria-label="访问权限设置"
+              @keydown.esc.stop.prevent="isAccessMenuOpen = false"
+            >
+              <div class="permission-options" aria-label="访问权限">
+                <button
+                  v-for="option in permissionOptions"
+                  :key="option.value"
+                  class="permission-option"
+                  :class="{ 'is-selected': permissionMode === option.value }"
+                  type="button"
+                  :aria-pressed="permissionMode === option.value"
+                  @click="selectPermission(option.value)"
+                >
+                  <component
+                    :is="option.icon"
+                    class="permission-option-icon"
+                    :size="15"
+                    :stroke-width="1.7"
+                    aria-hidden="true"
+                  />
+                  <span class="permission-option-copy">
+                    <span class="permission-option-title-row">
+                      <span class="permission-option-title">{{ option.title }}</span>
+                      <Check
+                        v-if="permissionMode === option.value"
+                        class="permission-check"
+                        :size="14"
+                        :stroke-width="1.8"
+                        aria-hidden="true"
+                      />
+                    </span>
+                    <span class="permission-option-description">{{ option.description }}</span>
+                  </span>
+                </button>
+              </div>
+            </div>
+          </ElPopover>
         </div>
         <div class="toolbar-right">
           <div class="model-picker" @keydown.esc.stop.prevent="closeModelMenu">
@@ -136,7 +282,7 @@
               </div>
             </ElPopover>
           </div>
-          <button class="send-btn" type="button" :disabled="!text.trim()">
+          <button ref="sendButtonRef" class="send-btn" type="button" :disabled="!text.trim()">
             <ArrowUp :size="15" :stroke-width="2.25" />
           </button>
         </div>
@@ -146,17 +292,156 @@
 </template>
 
 <script setup lang="ts">
-import { ArrowUp, Check, ChevronDown, ChevronRight, Plus } from 'lucide-vue-next'
-import { ElPopover } from 'element-plus'
+import {
+  ArrowUp,
+  Check,
+  CirclePlay,
+  ChevronDown,
+  ChevronRight,
+  File as FileIcon,
+  FileImage,
+  FileSpreadsheet,
+  FileText,
+  Plus,
+  ShieldCheck,
+  TriangleAlert,
+  X,
+} from 'lucide-vue-next'
+import { ElPopover, ElTooltip } from 'element-plus'
 import 'element-plus/es/components/popover/style/css'
+import 'element-plus/es/components/tooltip/style/css'
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import EnergyField from './EnergyField.vue'
 
 const text = ref('')
+type PermissionMode = 'ask' | 'auto' | 'full'
+const permissionMode = ref<PermissionMode>('full')
+const isAccessMenuOpen = ref(false)
 const textareaRef = ref<HTMLTextAreaElement>()
+const sendButtonRef = ref<HTMLButtonElement>()
+const fileInputRef = ref<HTMLInputElement>()
+type SelectedFile = { file: File; previewUrl: string | null }
+type FileKind = 'image' | 'sheet' | 'pdf' | 'document' | 'other'
+const selectedFiles = ref<SelectedFile[]>([])
+const isFileDragging = ref(false)
 const modelButtonRef = ref<HTMLButtonElement>()
 const isModelMenuOpen = ref(false)
 const showModelOptions = ref(false)
+let dragDepth = 0
+const fileIcons = {
+  image: FileImage,
+  sheet: FileSpreadsheet,
+  pdf: FileText,
+  document: FileText,
+  other: FileIcon,
+} as const
+
+const permissionOptions = [
+  {
+    value: 'ask',
+    title: '询问审批',
+    shortLabel: '询问审批',
+    description: '执行命令、修改 Workspace 外文件或访问网络前，始终询问',
+    icon: ShieldCheck,
+  },
+  {
+    value: 'auto',
+    title: '自动审批',
+    shortLabel: '自动审批',
+    description: '仅在检测到潜在风险时询问',
+    icon: CirclePlay,
+  },
+  {
+    value: 'full',
+    title: '完全访问',
+    shortLabel: '完全访问',
+    description: '不再询问，可自由访问你的文件、终端和网络',
+    icon: TriangleAlert,
+  },
+] as const
+const selectedPermission = computed(
+  () =>
+    permissionOptions.find((option) => option.value === permissionMode.value) ??
+    permissionOptions[0],
+)
+
+function selectPermission(value: PermissionMode) {
+  permissionMode.value = value
+  isAccessMenuOpen.value = false
+}
+
+function fileKind(file: File): FileKind {
+  if (file.type.startsWith('image/')) return 'image'
+  const extension = file.name.split('.').pop()?.toLowerCase()
+  if (extension && ['xls', 'xlsx', 'csv', 'ods'].includes(extension)) return 'sheet'
+  if (extension === 'pdf') return 'pdf'
+  if (extension && ['doc', 'docx', 'txt', 'md', 'rtf'].includes(extension)) return 'document'
+  return 'other'
+}
+
+function fileKey(file: File) {
+  return `${file.name}:${file.size}:${file.lastModified}`
+}
+
+function openFilePicker() {
+  fileInputRef.value?.click()
+}
+
+function addFiles(files: File[]) {
+  const existing = new Set(selectedFiles.value.map((item) => fileKey(item.file)))
+  for (const file of files) {
+    const key = fileKey(file)
+    if (!existing.has(key)) {
+      selectedFiles.value.push({
+        file,
+        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+      })
+      existing.add(key)
+    }
+  }
+}
+
+function onFilesSelected(event: Event) {
+  const input = event.currentTarget as HTMLInputElement
+  addFiles(Array.from(input.files ?? []))
+  input.value = ''
+}
+
+function hasDraggedFiles(event: DragEvent) {
+  return Array.from(event.dataTransfer?.types ?? []).includes('Files')
+}
+
+function onDragEnter(event: DragEvent) {
+  if (!hasDraggedFiles(event)) return
+  dragDepth += 1
+  isFileDragging.value = true
+}
+
+function onDragOver(event: DragEvent) {
+  if (!hasDraggedFiles(event)) return
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+}
+
+function onDragLeave() {
+  if (!isFileDragging.value) return
+  dragDepth = Math.max(0, dragDepth - 1)
+  if (dragDepth === 0) isFileDragging.value = false
+}
+
+function onFileDrop(event: DragEvent) {
+  const files = Array.from(event.dataTransfer?.files ?? [])
+  dragDepth = 0
+  isFileDragging.value = false
+  if (!hasDraggedFiles(event) && files.length === 0) return
+  event.preventDefault()
+  addFiles(files)
+}
+
+function removeFile(index: number) {
+  const [removed] = selectedFiles.value.splice(index, 1)
+  if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl)
+}
 
 // 前端模拟选项
 const modelOptions = ['DeepSeek Flash', 'GPT-4o', 'Claude Sonnet'] as const
@@ -302,6 +587,9 @@ function onSliderKeyDown(event: KeyboardEvent) {
 onUnmounted(() => {
   window.clearTimeout(dragTimer)
   window.clearTimeout(settleTimer)
+  for (const item of selectedFiles.value) {
+    if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
+  }
 })
 
 /** 输入框随内容增高，超过上限后内部滚动 */
@@ -310,6 +598,12 @@ function autoResize() {
   if (!el) return
   el.style.height = 'auto'
   el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+}
+
+function onEnter(event: KeyboardEvent) {
+  if (event.shiftKey || event.isComposing || event.keyCode === 229) return
+  event.preventDefault()
+  sendButtonRef.value?.click()
 }
 </script>
 
@@ -320,6 +614,7 @@ function autoResize() {
   padding: 0 16px;
 }
 .input-card {
+  position: relative;
   border: 1px solid #e5e7eb;
   border-radius: 14px;
   background: #fff;
@@ -328,6 +623,23 @@ function autoResize() {
 .input-card:focus-within {
   border-color: #c7ccd4;
   box-shadow: 0 2px 14px rgba(0, 0, 0, 0.08);
+}
+.input-card.is-file-dragging {
+  border-color: #8fa8d4;
+}
+.file-drop-hint {
+  position: absolute;
+  z-index: 10;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 1px dashed #8fa8d4;
+  border-radius: 13px;
+  background: rgba(248, 250, 255, 0.94);
+  color: #526a98;
+  font-size: 13px;
+  font-weight: 500;
+  pointer-events: none;
 }
 .input-textarea {
   display: block;
@@ -343,6 +655,117 @@ function autoResize() {
 }
 .input-textarea::placeholder {
   color: #9ca3af;
+}
+.file-input {
+  display: none;
+}
+.selected-files {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  max-height: 264px;
+  overflow-y: auto;
+  padding: 10px 14px 6px;
+}
+.file-chip {
+  box-sizing: border-box;
+  position: relative;
+  flex: 0 0 160px;
+  width: 160px;
+  height: 120px;
+  max-width: 100%;
+  border: 1px solid #d6d9de;
+  border-radius: 9px;
+  background: #f5f6f8;
+  color: #454a50;
+  font-size: 12px;
+}
+.file-chip svg {
+  flex-shrink: 0;
+}
+.file-card-icon {
+  position: absolute;
+  top: 34px;
+  left: 50%;
+  color: #737a82;
+  transform: translateX(-50%);
+}
+.file-thumbnail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: calc(100% - 26px);
+  border-radius: 8px 8px 0 0;
+  background: #e9ebef;
+  object-fit: cover;
+}
+.file-chip-name {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  line-height: 16px;
+}
+.file-chip-name span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.file-type-icon.is-sheet {
+  color: #10a452;
+}
+.file-type-icon.is-image {
+  color: #6784b2;
+}
+.file-type-icon.is-pdf {
+  color: #d95555;
+}
+.file-type-icon.is-document {
+  color: #5681c9;
+}
+.file-type-icon.is-other {
+  color: #737a82;
+}
+.file-remove-btn {
+  position: absolute;
+  top: -9px;
+  right: -8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.file-remove-btn::before {
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: rgba(20, 24, 30, 0.78);
+  content: '';
+}
+.file-remove-btn svg {
+  position: relative;
+  width: 11px;
+  height: 11px;
+}
+.file-remove-btn:focus-visible {
+  outline: 2px solid #a5b6da;
+  outline-offset: 1px;
 }
 .input-toolbar {
   display: flex;
@@ -582,6 +1005,96 @@ function autoResize() {
 .effort-track:has(.effort-range:active) .effort-track-thumb {
   transform: translate(-50%, -50%) scale(0.95);
 }
+.permission-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: #f7f7f8;
+  color: #555b63;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.permission-trigger.is-full {
+  color: #ef4444;
+}
+.permission-trigger:focus-visible,
+.permission-option:focus-visible {
+  outline: 2px solid #8b9fc7;
+  outline-offset: 2px;
+}
+.permission-trigger:active {
+  background: #e9eaed;
+}
+.permission-menu {
+  padding: 0;
+}
+.permission-options {
+  display: grid;
+  gap: 0;
+}
+.permission-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: 49px;
+  padding: 7px 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #303030;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.permission-option-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.permission-option-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 17px;
+}
+.permission-option-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.permission-option-title {
+  font-size: 13px;
+  font-weight: 500;
+}
+.permission-option-description {
+  color: #888;
+  font-size: 11.5px;
+}
+.permission-option.is-selected {
+  color: #ef4444;
+}
+.permission-option.is-selected .permission-option-description {
+  color: #ef4444;
+}
+.permission-check {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.permission-option:active {
+  background: #eceef1;
+}
 .send-btn {
   display: flex;
   align-items: center;
@@ -606,6 +1119,24 @@ function autoResize() {
   cursor: default;
 }
 @media (hover: hover) {
+  .permission-trigger:hover {
+    background: #eeeef0;
+  }
+  .permission-option:hover {
+    background: #f3f4f6;
+  }
+  .file-chip .file-remove-btn {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .file-chip:hover .file-remove-btn,
+  .file-chip .file-remove-btn:focus-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .file-remove-btn:hover::before {
+    background: #111;
+  }
   .tool-btn:hover {
     background: #f3f4f6;
   }
@@ -621,6 +1152,16 @@ function autoResize() {
   }
 }
 @media (any-pointer: coarse) {
+  .permission-trigger {
+    min-height: 36px;
+  }
+  .permission-option {
+    min-height: 48px;
+  }
+  .file-chip .file-remove-btn {
+    opacity: 1;
+    pointer-events: auto;
+  }
   .tool-btn {
     min-height: 36px;
   }
@@ -642,6 +1183,9 @@ function autoResize() {
 .tool-btn:active,
 .menu-option:active {
   background: #e9ecf1;
+}
+.file-remove-btn:active::before {
+  background: #111;
 }
 .effort-label:active {
   color: #303133;
