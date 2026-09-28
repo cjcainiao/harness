@@ -291,10 +291,6 @@
               </div>
             </ElPopover>
           </div>
-          <span v-if="isResponding" class="replying-indicator" role="status" aria-label="正在回复">
-            <span class="replying-spinner" aria-hidden="true" />
-            <span class="replying-label">正在回复</span>
-          </span>
           <button
             ref="sendButtonRef"
             class="send-btn"
@@ -1220,28 +1216,6 @@ function onTextareaKeydown(event: KeyboardEvent): void {
 .permission-option:active {
   background: #eceef1;
 }
-.replying-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 6px;
-  color: #737a82;
-  font-size: 12px;
-  white-space: nowrap;
-}
-.replying-spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid #dfe3e8;
-  border-top-color: #535d68;
-  border-radius: 50%;
-  animation: replying-spin 0.8s linear infinite;
-}
-@keyframes replying-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
 .send-btn {
   display: flex;
   align-items: center;
@@ -1329,16 +1303,6 @@ function onTextareaKeydown(event: KeyboardEvent): void {
   .send-btn {
     width: 40px;
     height: 40px;
-  }
-}
-@media (max-width: 600px) {
-  .replying-label {
-    display: none;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .replying-spinner {
-    animation: none;
   }
 }
 .tool-btn:active,

@@ -33,23 +33,194 @@
         <span class="user-avatar">U</span>
         <span class="user-name">用户</span>
       </div>
-      <button class="menu-item menu-icon" type="button">
-        <Settings :size="16" />
-      </button>
+      <ElPopover
+        v-model:visible="settingsVisible"
+        placement="top"
+        trigger="click"
+        role="dialog"
+        popper-class="sidebar-settings-popper"
+        :popper-style="settingsPopperStyle"
+        :width="272"
+        :offset="10"
+        :show-arrow="true"
+        :hide-after="0"
+        :persistent="false"
+      >
+        <template #reference>
+          <button
+            ref="settingsButtonRef"
+            class="menu-item menu-icon"
+            type="button"
+            data-sidebar-keep-open
+            aria-haspopup="dialog"
+            :aria-expanded="settingsVisible"
+            aria-label="设置"
+          >
+            <Settings :size="16" />
+          </button>
+        </template>
+
+        <div class="settings-menu" aria-label="设置">
+          <div class="settings-options">
+            <button
+              v-for="option in settingOptions"
+              :key="option.id"
+              class="settings-option"
+              type="button"
+              @click="selectSetting(option.id)"
+            >
+              <component
+                :is="option.icon"
+                class="settings-option-icon"
+                :size="15"
+                :stroke-width="1.7"
+                aria-hidden="true"
+              />
+              <span class="settings-option-copy">
+                <span class="settings-option-title">{{ option.label }}</span>
+                <span class="settings-option-description">{{ option.description }}</span>
+              </span>
+              <ArrowUpRight
+                v-if="option.route"
+                class="settings-option-arrow"
+                :size="14"
+                :stroke-width="1.8"
+                aria-hidden="true"
+              />
+              <Check
+                v-else-if="option.id === selectedSettingId"
+                class="settings-option-check"
+                :size="14"
+                :stroke-width="1.8"
+                aria-hidden="true"
+              />
+            </button>
+          </div>
+        </div>
+      </ElPopover>
     </footer>
   </aside>
 </template>
 
 <script setup lang="ts">
-import { PanelLeftClose, Search, Settings, SquarePen } from 'lucide-vue-next'
+import { ElPopover } from 'element-plus'
+import type { Component } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import {
+  ArrowUpRight,
+  Check,
+  PanelLeftClose,
+  Search,
+  Settings,
+  SlidersHorizontal,
+  SquarePen,
+} from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { useChatSessionsStore } from '@/stores/chatSessions'
 
 import ConversationList from './ConversationList.vue'
 
+interface SettingOption {
+  id: string
+  label: string
+  description: string
+  icon: Component
+  route?: string
+}
+
+const props = withDefaults(defineProps<{ sidebarVisible?: boolean }>(), { sidebarVisible: true })
 const emit = defineEmits<{ 'collapse-sidebar': [] }>()
 const router = useRouter()
 const chatSessions = useChatSessionsStore()
+
+const isSettingsOpen = ref(false)
+// 气泡挂在 body 上，侧栏不可见时必须显式关闭
+const settingsVisible = computed({
+  get: () => isSettingsOpen.value && props.sidebarVisible,
+  set: (visible) => {
+    if (props.sidebarVisible) isSettingsOpen.value = visible
+  },
+})
+
+watch(
+  () => props.sidebarVisible,
+  (visible) => {
+    if (!visible) isSettingsOpen.value = false
+  },
+)
+
+// 居中于按钮且不出屏所需的最大宽度
+const settingsPopperStyle = ref<Record<string, string>>({})
+const settingsButtonRef = ref<HTMLElement | null>(null)
+
+// 更新气泡宽度：居中需要两侧都有空间
+function updateSettingsPopperWidth(): void {
+  const anchor = settingsButtonRef.value
+  if (!anchor) return
+
+  const viewport = document.documentElement.clientWidth
+  const rect = anchor.getBoundingClientRect()
+  // 居中时两侧各占一半，取较小一侧算总宽
+  const centered = Math.min(rect.left, viewport - rect.right) * 2 - 24
+  settingsPopperStyle.value = {
+    maxWidth: `${Math.min(272, Math.max(200, Math.round(centered)))}px`,
+  }
+}
+
+// 变窄时收窄气泡并收起侧栏，避免被 popper 推回后偏离按钮
+function onViewportResize(): void {
+  updateSettingsPopperWidth()
+  if (document.documentElement.clientWidth <= 700 && !props.sidebarVisible) {
+    isSettingsOpen.value = false
+  }
+}
+
+// 打开前先算好宽度，避免首帧用旧位置
+watch(settingsVisible, (visible) => {
+  if (visible) updateSettingsPopperWidth()
+})
+
+let buttonObserver: ResizeObserver | undefined
+
+onMounted(() => {
+  window.addEventListener('resize', onViewportResize)
+  if (settingsButtonRef.value) {
+    buttonObserver = new ResizeObserver(() => updateSettingsPopperWidth())
+    buttonObserver.observe(settingsButtonRef.value)
+  }
+  updateSettingsPopperWidth()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', onViewportResize)
+  buttonObserver?.disconnect()
+})
+
+const selectedSettingId = ref('general')
+const settingOptions: SettingOption[] = [
+  {
+    id: 'general',
+    label: '通用设置',
+    description: '模型与系统配置',
+    icon: SlidersHorizontal,
+    route: '/config',
+  },
+  {
+    id: 'permission',
+    label: '访问权限',
+    description: '工具调用审批方式',
+    icon: Settings,
+  },
+]
+
+function selectSetting(id: string): void {
+  const option = settingOptions.find((item) => item.id === id)
+  if (!option) return
+
+  selectedSettingId.value = id
+  isSettingsOpen.value = false
+  if (option.route) void router.push(option.route)
+}
 
 function startNewConversation(): void {
   const threadId = chatSessions.createSession()
@@ -173,5 +344,72 @@ function startNewConversation(): void {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+.settings-menu {
+  padding: 0;
+}
+.settings-options {
+  display: grid;
+  gap: 2px;
+}
+.settings-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 46px;
+  padding: 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #303030;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.settings-option:active {
+  background: #eceef1;
+}
+.settings-option-icon {
+  flex-shrink: 0;
+  color: #555b63;
+}
+.settings-option-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 17px;
+}
+.settings-option-title {
+  font-size: 13px;
+  font-weight: 500;
+}
+.settings-option-description {
+  color: #888;
+  font-size: 11.5px;
+}
+.settings-option-arrow,
+.settings-option-check {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: #8b9098;
+}
+.settings-option-check {
+  color: #303133;
+}
+@media (hover: hover) {
+  .settings-option:hover {
+    background: #f3f4f6;
+  }
+}
+@media (any-pointer: coarse) {
+  .settings-option {
+    min-height: 48px;
+  }
+}
+/* 气泡挂在 body 上，宽度由 settingsPopperStyle 按视口计算 */
+:global(.sidebar-settings-popper) .settings-option-title {
+  white-space: nowrap;
 }
 </style>

@@ -4,6 +4,7 @@
     <ChatSidebar
       id="chat-sidebar"
       :class="{ 'is-open': sidebarOpen, 'is-collapsed': !mobileViewport && sidebarCollapsed }"
+      :sidebar-visible="sidebarVisible"
       :inert="mobileViewport ? !sidebarOpen : sidebarCollapsed"
       :aria-hidden="mobileViewport ? !sidebarOpen : sidebarCollapsed"
       @click="onSidebarClick"
@@ -30,12 +31,16 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import ChatSidebar from './components/sidebar/ChatSidebar.vue'
 
 const sidebarOpen = ref(false)
 const sidebarCollapsed = ref(false)
 const mobileViewport = ref(false)
+// 侧栏是否可见：移动端看抽屉，桌面端看是否收起
+const sidebarVisible = computed(() =>
+  mobileViewport.value ? sidebarOpen.value : !sidebarCollapsed.value,
+)
 let mobileQuery: MediaQueryList | undefined
 
 // 移动端和桌面端分别维护侧栏展开状态
@@ -63,7 +68,11 @@ onMounted(() => {
 onUnmounted(() => mobileQuery?.removeEventListener('change', updateMobileViewport))
 
 function onSidebarClick(event: MouseEvent) {
-  if (mobileViewport.value && (event.target as Element).closest('button')) sidebarOpen.value = false
+  if (!mobileViewport.value) return
+  const target = event.target as Element
+  // 设置按钮弹气泡，点它不能收起侧栏
+  if (target.closest('[data-sidebar-keep-open]')) return
+  if (target.closest('button')) sidebarOpen.value = false
 }
 </script>
 
