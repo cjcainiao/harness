@@ -1,5 +1,11 @@
 <template>
-  <div class="chat-input-box">
+  <div ref="inputRootRef" class="chat-input-box">
+    <SlashCommandMenu
+      v-if="isCommandMenuOpen"
+      ref="commandMenuRef"
+      :query="commandQuery ?? ''"
+      @select="selectCommand"
+    />
     <div
       class="input-card"
       :class="{ 'is-file-dragging': isFileDragging }"
@@ -66,8 +72,11 @@
         class="input-textarea"
         rows="1"
         placeholder="规划与编程，@ 添加上下文，/ 使用命令"
-        @input="autoResize"
-        @keydown.enter="onEnter"
+        :aria-controls="isCommandMenuOpen ? 'slash-command-menu' : undefined"
+        :aria-expanded="isCommandMenuOpen"
+        aria-haspopup="listbox"
+        @input="onTextInput"
+        @keydown="onTextareaKeydown"
       />
       <!-- 底部工具行 -->
       <div class="input-toolbar">
@@ -282,8 +291,21 @@
               </div>
             </ElPopover>
           </div>
-          <button ref="sendButtonRef" class="send-btn" type="button" :disabled="!text.trim()">
-            <ArrowUp :size="15" :stroke-width="2.25" />
+          <span v-if="isResponding" class="replying-indicator" role="status" aria-label="正在回复">
+            <span class="replying-spinner" aria-hidden="true" />
+            <span class="replying-label">正在回复</span>
+          </span>
+          <button
+            ref="sendButtonRef"
+            class="send-btn"
+            :class="{ 'is-responding': isResponding }"
+            type="button"
+            :aria-label="isResponding ? '停止回复' : '发送消息'"
+            :disabled="!isResponding && !text.trim() && selectedFiles.length === 0"
+            @click="onPrimaryAction"
+          >
+            <Square v-if="isResponding" :size="12" fill="currentColor" :stroke-width="1.5" />
+            <ArrowUp v-else :size="15" :stroke-width="2.25" />
           </button>
         </div>
       </div>
@@ -304,16 +326,29 @@ import {
   FileText,
   Plus,
   ShieldCheck,
+  Square,
   TriangleAlert,
   X,
 } from 'lucide-vue-next'
 import { ElPopover, ElTooltip } from 'element-plus'
 import 'element-plus/es/components/popover/style/css'
 import 'element-plus/es/components/tooltip/style/css'
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import EnergyField from './EnergyField.vue'
+import SlashCommandMenu from './SlashCommandMenu.vue'
 
+const props = withDefaults(defineProps<{ isResponding?: boolean }>(), { isResponding: false })
+const emit = defineEmits<{
+  send: [message: { content: string; files: File[] }]
+  stop: []
+}>()
 const text = ref('')
+const inputRootRef = ref<HTMLElement>()
+const commandMenuRef = ref<InstanceType<typeof SlashCommandMenu>>()
+const commandMenuDismissed = ref(false)
+// 仅输入斜杠命令时显示候选菜单
+const commandQuery = computed(() => text.value.match(/^\/([^\s]*)$/)?.[1] ?? null)
+const isCommandMenuOpen = computed(() => commandQuery.value !== null && !commandMenuDismissed.value)
 type PermissionMode = 'ask' | 'auto' | 'full'
 const permissionMode = ref<PermissionMode>('full')
 const isAccessMenuOpen = ref(false)
@@ -387,6 +422,7 @@ function openFilePicker() {
   fileInputRef.value?.click()
 }
 
+// 附件去重，图片单独生成预览地址
 function addFiles(files: File[]) {
   const existing = new Set(selectedFiles.value.map((item) => fileKey(item.file)))
   for (const file of files) {
@@ -411,6 +447,7 @@ function hasDraggedFiles(event: DragEvent) {
   return Array.from(event.dataTransfer?.types ?? []).includes('Files')
 }
 
+// 用进入层级计数避免跨子元素时误判拖拽结束
 function onDragEnter(event: DragEvent) {
   if (!hasDraggedFiles(event)) return
   dragDepth += 1
@@ -466,6 +503,7 @@ const previewEffort = computed(() => reasoningOptions[previewIndex.value]!)
 const effortEnergized = computed(
   () => effortRatio.value > 0 && (dragging.value || settling.value || effortPreview.value >= 99.95),
 )
+// 将四个推理档位映射到动画强度
 const effortIntensity = computed(() => {
   const bounded = Math.max(
     0,
@@ -504,6 +542,7 @@ async function closeModelMenu() {
   modelButtonRef.value?.focus()
 }
 
+// 将滑块位置吸附到推理档位并播放收尾动画
 function commitAt(position: number) {
   draggingNow = false
   window.clearTimeout(dragTimer)
@@ -585,12 +624,49 @@ function onSliderKeyDown(event: KeyboardEvent) {
 }
 
 onUnmounted(() => {
+  document.removeEventListener('pointerdown', dismissCommandMenuOutside)
   window.clearTimeout(dragTimer)
   window.clearTimeout(settleTimer)
   for (const item of selectedFiles.value) {
     if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
   }
 })
+
+onMounted(() => document.addEventListener('pointerdown', dismissCommandMenuOutside))
+
+function dismissCommandMenuOutside(event: PointerEvent): void {
+  if (inputRootRef.value?.contains(event.target as Node)) return
+  commandMenuDismissed.value = true
+}
+
+function onTextInput(): void {
+  commandMenuDismissed.value = false
+  autoResize()
+}
+
+function selectCommand(name: string): void {
+  text.value = `/${name} `
+  commandMenuDismissed.value = true
+  void nextTick(() => {
+    autoResize()
+    const textarea = textareaRef.value
+    textarea?.focus()
+    textarea?.setSelectionRange(text.value.length, text.value.length)
+  })
+}
+
+// 从消息操作栏重新编辑已发送的文字
+function setDraft(content: string): void {
+  text.value = content
+  commandMenuDismissed.value = true
+  void nextTick(() => {
+    autoResize()
+    textareaRef.value?.focus()
+    textareaRef.value?.setSelectionRange(text.value.length, text.value.length)
+  })
+}
+
+defineExpose({ setDraft })
 
 /** 输入框随内容增高，超过上限后内部滚动 */
 function autoResize() {
@@ -600,15 +676,64 @@ function autoResize() {
   el.style.height = `${Math.min(el.scrollHeight, 200)}px`
 }
 
-function onEnter(event: KeyboardEvent) {
-  if (event.shiftKey || event.isComposing || event.keyCode === 229) return
+// 发出原始 File 后清理输入框和预览地址
+function sendMessage() {
+  if (props.isResponding) return
+  if (isCommandMenuOpen.value) {
+    commandMenuRef.value?.selectActive()
+    return
+  }
+  const content = text.value.trim()
+  const files = selectedFiles.value.map((item) => item.file)
+  if (!content && files.length === 0) return
+  emit('send', { content, files })
+  text.value = ''
+  commandMenuDismissed.value = false
+  for (const item of selectedFiles.value) {
+    if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
+  }
+  selectedFiles.value = []
+  void nextTick(() => {
+    autoResize()
+    textareaRef.value?.focus()
+  })
+}
+
+// 回复期间主按钮用于停止模拟流
+function onPrimaryAction(): void {
+  if (props.isResponding) emit('stop')
+  else sendMessage()
+}
+
+function onTextareaKeydown(event: KeyboardEvent): void {
+  if (event.isComposing || event.keyCode === 229) return
+  if (isCommandMenuOpen.value) {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      commandMenuRef.value?.moveSelection(event.key === 'ArrowDown' ? 1 : -1)
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      commandMenuDismissed.value = true
+      return
+    }
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      commandMenuRef.value?.selectActive()
+      return
+    }
+  }
+  if (event.key !== 'Enter' || event.shiftKey) return
   event.preventDefault()
+  if (props.isResponding) return
   sendButtonRef.value?.click()
 }
 </script>
 
 <style scoped>
 .chat-input-box {
+  position: relative;
   max-width: 980px;
   margin: 0 auto;
   padding: 0 16px;
@@ -1095,6 +1220,28 @@ function onEnter(event: KeyboardEvent) {
 .permission-option:active {
   background: #eceef1;
 }
+.replying-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 6px;
+  color: #737a82;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.replying-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #dfe3e8;
+  border-top-color: #535d68;
+  border-radius: 50%;
+  animation: replying-spin 0.8s linear infinite;
+}
+@keyframes replying-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .send-btn {
   display: flex;
   align-items: center;
@@ -1112,6 +1259,10 @@ function onEnter(event: KeyboardEvent) {
 }
 .send-btn:active {
   transform: scale(0.94);
+}
+.send-btn:focus-visible {
+  outline: 2px solid #a5b6da;
+  outline-offset: 2px;
 }
 .send-btn:disabled {
   background: #e8e8e8;
@@ -1178,6 +1329,16 @@ function onEnter(event: KeyboardEvent) {
   .send-btn {
     width: 40px;
     height: 40px;
+  }
+}
+@media (max-width: 600px) {
+  .replying-label {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .replying-spinner {
+    animation: none;
   }
 }
 .tool-btn:active,

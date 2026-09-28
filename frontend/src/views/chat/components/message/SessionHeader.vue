@@ -3,13 +3,14 @@
     <div class="session-identity">
       <button
         class="header-action sidebar-toggle"
+        :class="{ 'is-visible': !sidebarOpen }"
         type="button"
-        aria-label="切换侧栏"
+        :aria-label="sidebarOpen ? '收起侧边栏' : '展开侧边栏'"
         aria-controls="chat-sidebar"
         :aria-expanded="sidebarOpen"
         @click="emit('toggle-sidebar')"
       >
-        <Menu :size="18" :stroke-width="1.8" aria-hidden="true" />
+        <PanelLeftOpen :size="18" :stroke-width="1.8" aria-hidden="true" />
       </button>
       <FolderClosed class="session-icon" :size="16" :stroke-width="1.6" aria-hidden="true" />
       <h1 class="session-title" :title="title">{{ title }}</h1>
@@ -18,7 +19,7 @@
 </template>
 
 <script setup lang="ts">
-import { FolderClosed, Menu } from 'lucide-vue-next'
+import { FolderClosed, PanelLeftOpen } from 'lucide-vue-next'
 
 defineProps<{
   title: string
@@ -92,6 +93,11 @@ const emit = defineEmits<{
 }
 .sidebar-toggle {
   display: none;
+}
+.sidebar-toggle.is-visible {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-left: -5px;
 }
 @media (any-pointer: coarse) {
   .header-action {

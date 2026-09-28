@@ -3,10 +3,11 @@
     <!-- 左侧导航栏 -->
     <ChatSidebar
       id="chat-sidebar"
-      :class="{ 'is-open': sidebarOpen }"
-      :inert="mobileViewport && !sidebarOpen"
-      :aria-hidden="mobileViewport && !sidebarOpen"
+      :class="{ 'is-open': sidebarOpen, 'is-collapsed': !mobileViewport && sidebarCollapsed }"
+      :inert="mobileViewport ? !sidebarOpen : sidebarCollapsed"
+      :aria-hidden="mobileViewport ? !sidebarOpen : sidebarCollapsed"
       @click="onSidebarClick"
+      @collapse-sidebar="collapseSidebar"
     />
     <button
       v-if="sidebarOpen"
@@ -20,8 +21,8 @@
       <router-view v-slot="{ Component }">
         <component
           :is="Component"
-          :sidebar-open="sidebarOpen"
-          @toggle-sidebar="sidebarOpen = !sidebarOpen"
+          :sidebar-open="mobileViewport ? sidebarOpen : !sidebarCollapsed"
+          @toggle-sidebar="toggleSidebar"
         />
       </router-view>
     </main>
@@ -33,11 +34,24 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import ChatSidebar from './components/sidebar/ChatSidebar.vue'
 
 const sidebarOpen = ref(false)
+const sidebarCollapsed = ref(false)
 const mobileViewport = ref(false)
 let mobileQuery: MediaQueryList | undefined
 
+// 移动端和桌面端分别维护侧栏展开状态
 function updateMobileViewport() {
   mobileViewport.value = mobileQuery?.matches ?? false
+  if (!mobileViewport.value) sidebarOpen.value = false
+}
+
+function collapseSidebar(): void {
+  if (mobileViewport.value) sidebarOpen.value = false
+  else sidebarCollapsed.value = true
+}
+
+function toggleSidebar(): void {
+  if (mobileViewport.value) sidebarOpen.value = !sidebarOpen.value
+  else sidebarCollapsed.value = !sidebarCollapsed.value
 }
 
 onMounted(() => {
@@ -49,7 +63,7 @@ onMounted(() => {
 onUnmounted(() => mobileQuery?.removeEventListener('change', updateMobileViewport))
 
 function onSidebarClick(event: MouseEvent) {
-  if ((event.target as Element).closest('button')) sidebarOpen.value = false
+  if (mobileViewport.value && (event.target as Element).closest('button')) sidebarOpen.value = false
 }
 </script>
 
@@ -62,6 +76,16 @@ function onSidebarClick(event: MouseEvent) {
   flex: 1;
   min-width: 0;
   background: #fff;
+}
+.chat-sidebar {
+  overflow: hidden;
+  transition:
+    width 0.2s ease,
+    border-color 0.2s ease;
+}
+.chat-sidebar.is-collapsed {
+  width: 0;
+  border-right-color: transparent;
 }
 .sidebar-backdrop {
   display: none;
@@ -96,7 +120,7 @@ function onSidebarClick(event: MouseEvent) {
 }
 @media (prefers-reduced-motion: reduce) {
   .chat-sidebar {
-    transition-duration: 0s;
+    transition: none;
   }
 }
 </style>

@@ -59,9 +59,7 @@ in vec2 a_position;
 out vec2 v_uv;
 void main(){v_uv=a_position*0.5+0.5;gl_Position=vec4(a_position,0.0,1.0);}`
 
-// One production renderer, derived from the accepted cellular feedback model.
-// Motion is measured in CSS pixels so changing the rail width does not change
-// the apparent propagation speed.
+// 按像素计算动画速度，轨道宽度变化时保持传播速度一致
 const ENERGY_SIMULATION = `#version 300 es
 precision highp float;
 in vec2 v_uv;

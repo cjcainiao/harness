@@ -2,11 +2,20 @@
   <aside class="chat-sidebar">
     <!-- 顶部菜单，固定 -->
     <header class="sidebar-top">
-      <div class="sidebar-logo">
-        <span>Harness</span>
+      <div class="sidebar-top-row">
+        <div class="sidebar-logo">Harness</div>
+        <button
+          class="sidebar-collapse"
+          type="button"
+          aria-label="收起侧边栏"
+          aria-controls="chat-sidebar"
+          @click="emit('collapse-sidebar')"
+        >
+          <PanelLeftClose :size="17" :stroke-width="1.8" aria-hidden="true" />
+        </button>
       </div>
       <nav class="sidebar-menu">
-        <button class="menu-item" type="button">
+        <button class="menu-item" type="button" @click="startNewConversation">
           <SquarePen :size="16" />
           <span>新对话</span>
         </button>
@@ -32,9 +41,20 @@
 </template>
 
 <script setup lang="ts">
-import { Search, Settings, SquarePen } from 'lucide-vue-next'
+import { PanelLeftClose, Search, Settings, SquarePen } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
+import { useChatSessionsStore } from '@/stores/chatSessions'
 
 import ConversationList from './ConversationList.vue'
+
+const emit = defineEmits<{ 'collapse-sidebar': [] }>()
+const router = useRouter()
+const chatSessions = useChatSessionsStore()
+
+function startNewConversation(): void {
+  const threadId = chatSessions.createSession()
+  void router.push({ name: 'chat-index', query: { thread_id: threadId } })
+}
 </script>
 
 <style scoped>
@@ -48,11 +68,38 @@ import ConversationList from './ConversationList.vue'
 .sidebar-top {
   flex-shrink: 0;
 }
+.sidebar-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 8px 2px 12px;
+}
 .sidebar-logo {
-  padding: 14px 12px 6px;
   font-size: 15px;
   font-weight: 600;
   letter-spacing: 0.5px;
+}
+.sidebar-collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #565d64;
+  cursor: pointer;
+}
+.sidebar-collapse:hover,
+.sidebar-collapse:active {
+  background: #eceff3;
+}
+.sidebar-collapse:focus-visible {
+  outline: 2px solid #a5b6da;
+  outline-offset: 1px;
 }
 .sidebar-menu {
   padding: 4px 8px;
