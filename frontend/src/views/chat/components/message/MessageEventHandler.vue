@@ -58,6 +58,7 @@
 <script setup lang="ts">
 import { CornerDownRight } from 'lucide-vue-next'
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { streamChat, type ChatSendRequest, type ChatStreamRequest } from '@/api/chat'
 import { useChatSessionsStore } from '@/stores/chatSessions'
 import MessageChunk from './MessageChunk.vue'
 import MessageLocator from './MessageLocator.vue'
@@ -108,155 +109,10 @@ interface TurnRuntime {
 
 const turns = ref<TurnState[]>([])
 const runtimes = new Map<string, TurnRuntime>()
-const demoStreams = new Map<string, number>()
+const activeStreams = new Map<string, AbortController>()
 const scrollContainer = ref<HTMLElement | null>(null)
 let nextLocatorId = 0
 const isResponding = computed(() => turns.value.some((turn) => turn.status === 'streaming'))
-
-// 仅供前端预览的事件序列，覆盖当前所有渲染分支
-const demoEvents: MessageEvent[] = [
-  // 推理：当前无渲染器，验证不打断后续事件
-  { type: 'reasoning_chunk', content: '先确认要演示哪些组件。' },
-
-  // 正文块 A：连续分片合并为同一块
-  {
-    type: 'message_chunk',
-    message_id: 'msg-a',
-    content:
-      '## 一、正文与 Markdown\n\n' +
-      '这段文字由 **message_chunk** 事件累积，交给 `MessageChunk` 渲染，' +
-      '同一块内的分片会合并成一个段落。\n\n' +
-      '> 引用块：下面是自动识别的链接 https://github.com/bytedance/deer-flow\n\n',
-  },
-  {
-    type: 'message_chunk',
-    message_id: 'msg-a',
-    content: '\n第二段分片继续写入同一正文块，不会新建显示项。\n',
-  },
-
-  // 用量：第一次计数，稍后与第二次累计
-  {
-    type: 'usage',
-    usage: {
-      input_tokens: 512,
-      output_tokens: 96,
-      total_tokens: 608,
-      input_token_details: { cache_read: 256 },
-    },
-  },
-
-  // 工具一：参数分片带调用 ID，正常完成
-  {
-    type: 'tool_call_chunk',
-    tool: 'current_time',
-    tool_call_id: 'call_time',
-    index: 0,
-    arguments: '{"time',
-  },
-  {
-    type: 'tool_call_chunk',
-    tool_call_id: 'call_time',
-    index: 0,
-    arguments: 'zone": "Asia/Shanghai"}',
-  },
-  {
-    type: 'tool_start',
-    tool: 'current_time',
-    tool_call_id: 'call_time',
-    arguments: { timezone: 'Asia/Shanghai' },
-  },
-  {
-    type: 'tool_result',
-    tool: 'current_time',
-    tool_call_id: 'call_time',
-    content: '{"timezone":"Asia/Shanghai","datetime":"2026-09-29T10:00:00+08:00","weekday":2}',
-    duration_ms: 12,
-  },
-
-  // 工具二：首个分片只有 index 没有 ID，验证按 index 回捞；结果为失败态
-  { type: 'tool_call_chunk', tool: 'read_file', index: 1, arguments: '{"path"' },
-  {
-    type: 'tool_call_chunk',
-    tool: 'read_file',
-    tool_call_id: 'call_read',
-    index: 1,
-    arguments: ': "/etc/hosts"}',
-  },
-  {
-    type: 'tool_start',
-    tool: 'read_file',
-    tool_call_id: 'call_read',
-    arguments: { path: '/etc/hosts' },
-  },
-  {
-    type: 'tool_error',
-    tool: 'read_file',
-    tool_call_id: 'call_read',
-    content: '文件不存在：/etc/hosts',
-    duration_ms: 3,
-  },
-
-  // 工具三：无参数分片，结果无内容（Command 型返回值）
-  {
-    type: 'tool_start',
-    tool: 'dispatch_task',
-    tool_call_id: 'call_task',
-    arguments: { target: 'subagent' },
-  },
-  { type: 'tool_result', tool: 'dispatch_task', tool_call_id: 'call_task', duration_ms: 480 },
-
-  // 正文块 B：工具之后的正文，独立成块
-  {
-    type: 'message_chunk',
-    message_id: 'msg-b',
-    content:
-      '### 二、列表 / 代码 / 表格\n\n' +
-      '- 呼吸点加载动画\n- 推荐提问\n  - 嵌套列表项\n\n' +
-      '1. 有序列表\n2. 带 ~~删除线~~ 的项\n\n' +
-      '```python\n' +
-      'async def stream():\n' +
-      '    yield {"type": "message_chunk", "content": "..."}\n' +
-      '```\n\n',
-  },
-  {
-    type: 'message_chunk',
-    message_id: 'msg-b',
-    content:
-      '\n| 组件 | 触发事件 |\n| --- | --- |\n' +
-      '| MessageChunk | message_chunk |\n| ToolCallMessage | tool_start / tool_result / tool_error |\n' +
-      '| TurnActions | usage |\n| 推荐提问 | done 前写入 |\n\n---\n\n' +
-      '以上是本轮最后一段正文，用量为两次 usage 的累计值。\n',
-  },
-
-  // 用量：与第一次累加
-  { type: 'usage', usage: { input_tokens: 320, output_tokens: 148, total_tokens: 468 } },
-
-  // 自定义事件：当前仅占位
-  { type: 'custom', event: 'demo', message: '自定义事件不改变渲染' },
-]
-const demoFollowUpQuestions = [
-  '能再详细解释一下吗？',
-  '可以给我一个具体示例吗？',
-  '接下来该怎么做？',
-]
-// 单个分片的推送间隔
-const demoTickMs = 40
-// 正文分片长度，接近真实 token 节奏
-const demoSliceSize = 8
-
-// 长正文拆成小分片，避免整块文字一次跳出
-function sliceDemoEvent(event: MessageEvent): MessageEvent[] {
-  const content = event.content
-  const isTextEvent = event.type === 'message_chunk' || event.type === 'reasoning_chunk'
-  if (!isTextEvent || typeof content !== 'string') return [event]
-
-  const parts: MessageEvent[] = []
-  for (let offset = 0; offset < content.length; offset += demoSliceSize) {
-    parts.push({ ...event, content: content.slice(offset, offset + demoSliceSize) })
-  }
-  return parts
-}
-const demoScript = demoEvents.flatMap(sliceDemoEvent)
 
 // 按当前 turn 状态同步输入框的回复提示
 function notifyResponding(): void {
@@ -432,7 +288,7 @@ watch(
     if (previousId) {
       // 先清掉上一个会话的回复状态
       chatSessions.setResponding(previousId, false)
-      stopDemoStreams()
+      stopChatTurns()
       chatSessions.saveTurns(previousId, turns.value)
     }
     loadTurns(chatSessions.getTurns(nextId))
@@ -660,45 +516,60 @@ function handleEvent(value: unknown, turnId: string): boolean {
   return true
 }
 
-// 前端预览：按事件序列走真实渲染入口
-function startDemoTurn(question: string, options: { id?: string; files?: File[] } = {}): string {
-  const turnId = startTurn(question, options)
-  let eventIndex = 0
-  const timer = window.setInterval(() => {
-    if (eventIndex < demoScript.length) {
-      handleEvent({ ...demoScript[eventIndex], source: 'model' }, turnId)
-      eventIndex += 1
-      return
-    }
-    setFollowUpQuestions(turnId, demoFollowUpQuestions)
-    handleEvent({ type: 'done', thread_id: props.threadId }, turnId)
-    window.clearInterval(timer)
-    demoStreams.delete(turnId)
-  }, demoTickMs)
-  demoStreams.set(turnId, timer)
+// 请求后端，事件只写入本次 turn
+async function runChatTurn(turnId: string, request: ChatStreamRequest): Promise<void> {
+  const controller = new AbortController()
+  activeStreams.set(turnId, controller)
+  try {
+    await streamChat(request, {
+      signal: controller.signal,
+      onEvent: (event) => handleEvent(event, turnId),
+      onClose: (completed) => {
+        // 没收到结束事件说明连接被截断
+        if (!completed) handleEvent({ type: 'error', message: '连接中断' }, turnId)
+      },
+    })
+  } catch {
+    if (!controller.signal.aborted) handleEvent({ type: 'error', message: '请求失败' }, turnId)
+  } finally {
+    activeStreams.delete(turnId)
+  }
+}
+
+// 发送提问，附件仅在本地展示
+function startChatTurn(
+  question: string,
+  options: { files?: File[]; request?: ChatSendRequest } = {},
+): string {
+  const turnId = startTurn(question, { files: options.files })
+  void runChatTurn(turnId, {
+    ...options.request,
+    message: question,
+    thread_id: props.threadId,
+  })
   return turnId
 }
 
-// 切换窗口时结束未完成的模拟回复
-function stopDemoStreams(): void {
-  for (const [turnId, timer] of demoStreams) {
-    window.clearInterval(timer)
-    handleEvent({ type: 'done' }, turnId)
+// 中断未完成的回复
+function stopChatTurns(): void {
+  for (const [turnId, controller] of activeStreams) {
+    controller.abort()
+    handleEvent({ type: 'done', thread_id: props.threadId }, turnId)
   }
-  demoStreams.clear()
+  activeStreams.clear()
 }
 
 defineExpose({
   startTurn,
-  startDemoTurn,
-  stopDemoStreams,
+  startChatTurn,
+  stopChatTurns,
   handleEvent,
   loadTurns,
   setFollowUpQuestions,
 })
 
 onUnmounted(() => {
-  stopDemoStreams()
+  stopChatTurns()
   chatSessions.saveTurns(props.threadId, turns.value)
 })
 </script>

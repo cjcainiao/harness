@@ -193,9 +193,9 @@
                   type="button"
                   aria-haspopup="dialog"
                   :aria-expanded="isModelMenuOpen"
-                  :aria-label="`模型 ${selectedModel}，推理强度 ${reasoningEffort}`"
+                  :aria-label="`模型 ${modelLabel}，推理强度 ${reasoningEffort}`"
                 >
-                  <span class="model-name">{{ selectedModel }}</span>
+                  <span class="model-name">{{ modelLabel }}</span>
                   <span class="model-effort">{{ reasoningEffort }}</span>
                   <ChevronDown class="model-chevron" :size="14" />
                 </button>
@@ -207,6 +207,7 @@
                 @keydown.esc.stop.prevent="closeModelMenu"
               >
                 <div
+                  v-if="reasoningOptions.length > 1"
                   class="effort-panel is-energy"
                   :class="{ 'is-max': effortPreview >= 99 }"
                   :style="{
@@ -264,18 +265,21 @@
                   <div class="menu-divider" />
                   <div class="menu-heading">模型</div>
                   <div class="model-options-scroll" role="group" aria-label="可选模型">
+                    <p v-if="!models.length" class="menu-heading">
+                      {{ modelsLoading ? '加载中' : '未配置模型' }}
+                    </p>
                     <button
-                      v-for="model in modelOptions"
-                      :key="model"
+                      v-for="model in models"
+                      :key="model.name"
                       class="menu-option"
-                      :class="{ 'is-selected': selectedModel === model }"
+                      :class="{ 'is-selected': selectedModelName === model.name }"
                       type="button"
                       role="menuitemradio"
-                      :aria-checked="selectedModel === model"
-                      @click="chooseModel(model)"
+                      :aria-checked="selectedModelName === model.name"
+                      @click="chooseModel(model.name)"
                     >
-                      <span>{{ model }}</span>
-                      <Check v-if="selectedModel === model" :size="15" />
+                      <span>{{ model.display_name }}</span>
+                      <Check v-if="selectedModelName === model.name" :size="15" />
                     </button>
                   </div>
                 </template>
@@ -326,16 +330,19 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-vue-next'
-import { ElPopover, ElTooltip } from 'element-plus'
+import { ElMessage, ElPopover, ElTooltip } from 'element-plus'
+import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/popover/style/css'
 import 'element-plus/es/components/tooltip/style/css'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import type { ChatSendRequest } from '@/api/chat'
+import { fetchModels, type ModelInfo } from '@/api/config'
 import EnergyField from './EnergyField.vue'
 import SlashCommandMenu from './SlashCommandMenu.vue'
 
 const props = withDefaults(defineProps<{ isResponding?: boolean }>(), { isResponding: false })
 const emit = defineEmits<{
-  send: [message: { content: string; files: File[] }]
+  send: [message: { content: string; files: File[]; request: ChatSendRequest }]
   stop: []
 }>()
 const text = ref('')
@@ -476,41 +483,67 @@ function removeFile(index: number) {
   if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl)
 }
 
-// 前端模拟选项
-const modelOptions = ['DeepSeek Flash', 'GPT-4o', 'Claude Sonnet'] as const
-const reasoningOptions = ['关闭', '低', '中等', '高'] as const
-type ReasoningEffort = (typeof reasoningOptions)[number]
+const EFFORT_OFF = '关闭'
+// 支持推理但未配档位时的开关值
+const EFFORT_ON = '开启'
+// 四档基准动画曲线
+const EFFORT_CURVE = [0, 0.24, 0.58, 1]
 
-const selectedModel = ref<(typeof modelOptions)[number]>('DeepSeek Flash')
-const reasoningEffort = ref<ReasoningEffort>('中等')
-const reasoningIndex = computed(() => reasoningOptions.indexOf(reasoningEffort.value))
-const committed = computed(() => (reasoningIndex.value / (reasoningOptions.length - 1)) * 100)
+/** 在等距分段曲线上按 ratio 插值 */
+function interpolateCurve(stops: number[], ratio: number): number {
+  if (stops.length < 2) return stops[0] ?? 0
+  const scaled = Math.max(0, Math.min(1, ratio)) * (stops.length - 1)
+  const left = Math.min(stops.length - 2, Math.floor(scaled))
+  return stops[left]! + (stops[left + 1]! - stops[left]!) * (scaled - left)
+}
+
+const models = ref<ModelInfo[]>([])
+const modelsLoading = ref(true)
+const selectedModelName = ref('')
+const selectedModel = computed(
+  () => models.value.find((model) => model.name === selectedModelName.value) ?? null,
+)
+const modelLabel = computed(() => selectedModel.value?.display_name ?? '未选择模型')
+// 关闭固定存在，其余档位跟随所选模型
+const reasoningOptions = computed(() => {
+  const model = selectedModel.value
+  if (!model?.supports_thinking) return [EFFORT_OFF]
+  return model.reasoning_levels.length
+    ? [EFFORT_OFF, ...model.reasoning_levels]
+    : [EFFORT_OFF, EFFORT_ON]
+})
+const reasoningEffort = ref(EFFORT_OFF)
+const effortLastIndex = computed(() => reasoningOptions.value.length - 1)
+
+/** 档位下标换算滑块位置 */
+function positionOf(index: number): number {
+  return effortLastIndex.value > 0 ? (index / effortLastIndex.value) * 100 : 0
+}
+
+const committed = computed(() => positionOf(reasoningOptions.value.indexOf(reasoningEffort.value)))
 const effortPreview = ref(committed.value)
 const dragging = ref(false)
 const settling = ref(false)
 const effortRatio = computed(() => effortPreview.value / 100)
 const previewIndex = computed(() =>
   Math.min(
-    reasoningOptions.length - 1,
-    Math.max(0, Math.round(effortRatio.value * (reasoningOptions.length - 1))),
+    effortLastIndex.value,
+    Math.max(0, Math.round(effortRatio.value * effortLastIndex.value)),
   ),
 )
-const previewEffort = computed(() => reasoningOptions[previewIndex.value]!)
+const previewEffort = computed(() => reasoningOptions.value[previewIndex.value] ?? EFFORT_OFF)
 const effortEnergized = computed(
   () => effortRatio.value > 0 && (dragging.value || settling.value || effortPreview.value >= 99.95),
 )
-// 将四个推理档位映射到动画强度
-const effortIntensity = computed(() => {
-  const bounded = Math.max(
-    0,
-    Math.min(1, Number.isFinite(effortRatio.value) ? effortRatio.value : 0),
-  )
-  const stops = [0, 0.24, 0.58, 1]
-  const scaled = bounded * (stops.length - 1)
-  const left = Math.min(stops.length - 2, Math.floor(scaled))
-  const progress = scaled - left
-  return stops[left]! + (stops[left + 1]! - stops[left]!) * progress
-})
+// 按当前档位数重采样曲线
+const effortStops = computed(() =>
+  Array.from({ length: reasoningOptions.value.length }, (_, index) =>
+    interpolateCurve(EFFORT_CURVE, effortLastIndex.value > 0 ? index / effortLastIndex.value : 0),
+  ),
+)
+const effortIntensity = computed(() =>
+  effortStops.value.length < 2 ? 0 : interpolateCurve(effortStops.value, effortRatio.value),
+)
 const visibleEffortIntensity = computed(() =>
   effortRatio.value > 0 ? Math.min(1, effortIntensity.value * 1.4 + 0.15) : 0,
 )
@@ -522,14 +555,30 @@ watch(committed, (value) => {
   if (!draggingNow) effortPreview.value = value
 })
 
+// 当前选择对应的对话请求参数
+const chatOptions = computed<ChatSendRequest>(() => {
+  const effort = reasoningEffort.value
+  const levels = selectedModel.value?.reasoning_levels ?? []
+  return {
+    model_name: selectedModelName.value || undefined,
+    thinking_enabled: effort !== EFFORT_OFF,
+    reasoning_effort: levels.includes(effort) ? effort : undefined,
+  }
+})
+
 function prepareModelMenu() {
   showModelOptions.value = false
   effortPreview.value = committed.value
 }
 
-function chooseModel(model: (typeof modelOptions)[number]) {
-  selectedModel.value = model
+// 换模型后档位可能不再受支持
+function chooseModel(name: string) {
+  selectedModelName.value = name
   isModelMenuOpen.value = false
+  if (reasoningOptions.value.includes(reasoningEffort.value)) return
+  const dropped = reasoningEffort.value
+  reasoningEffort.value = EFFORT_OFF
+  ElMessage.warning(`${modelLabel.value} 不支持 ${dropped} 推理强度，已切到${EFFORT_OFF}`)
 }
 
 async function closeModelMenu() {
@@ -544,18 +593,18 @@ function commitAt(position: number) {
   window.clearTimeout(dragTimer)
   dragging.value = false
   const index = Math.min(
-    reasoningOptions.length - 1,
-    Math.max(0, Math.round((position / 100) * (reasoningOptions.length - 1))),
+    effortLastIndex.value,
+    Math.max(0, Math.round((position / 100) * effortLastIndex.value)),
   )
-  const effort = reasoningOptions[index]!
-  effortPreview.value = (index / (reasoningOptions.length - 1)) * 100
+  const effort = reasoningOptions.value[index] ?? EFFORT_OFF
+  effortPreview.value = positionOf(index)
   window.clearTimeout(settleTimer)
   settling.value = true
   settleTimer = window.setTimeout(
     () => {
       settling.value = false
     },
-    index === reasoningOptions.length - 1 ? 1840 : 620,
+    index === effortLastIndex.value ? 1840 : 620,
   )
   reasoningEffort.value = effort
 }
@@ -599,9 +648,10 @@ function cancelDrag() {
   effortPreview.value = committed.value
 }
 
-function chooseEffort(effort: ReasoningEffort) {
-  const index = reasoningOptions.indexOf(effort)
-  const position = (index / (reasoningOptions.length - 1)) * 100
+function chooseEffort(effort: string) {
+  const index = reasoningOptions.value.indexOf(effort)
+  if (index < 0) return
+  const position = positionOf(index)
   effortPreview.value = position
   commitAt(position)
 }
@@ -609,14 +659,14 @@ function chooseEffort(effort: ReasoningEffort) {
 function onSliderKeyDown(event: KeyboardEvent) {
   let targetIndex: number
   if (['ArrowRight', 'ArrowUp', 'PageUp'].includes(event.key))
-    targetIndex = Math.min(reasoningOptions.length - 1, previewIndex.value + 1)
+    targetIndex = Math.min(effortLastIndex.value, previewIndex.value + 1)
   else if (['ArrowLeft', 'ArrowDown', 'PageDown'].includes(event.key))
     targetIndex = Math.max(0, previewIndex.value - 1)
   else if (event.key === 'Home') targetIndex = 0
-  else if (event.key === 'End') targetIndex = reasoningOptions.length - 1
+  else if (event.key === 'End') targetIndex = effortLastIndex.value
   else return
   event.preventDefault()
-  chooseEffort(reasoningOptions[targetIndex]!)
+  chooseEffort(reasoningOptions.value[targetIndex] ?? EFFORT_OFF)
 }
 
 onUnmounted(() => {
@@ -629,6 +679,20 @@ onUnmounted(() => {
 })
 
 onMounted(() => document.addEventListener('pointerdown', dismissCommandMenuOutside))
+
+// 拉取模型列表，第一项作为默认选中
+async function loadModels() {
+  try {
+    models.value = await fetchModels()
+    selectedModelName.value = models.value[0]?.name ?? ''
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '获取模型列表失败')
+  } finally {
+    modelsLoading.value = false
+  }
+}
+
+onMounted(loadModels)
 
 function dismissCommandMenuOutside(event: PointerEvent): void {
   if (inputRootRef.value?.contains(event.target as Node)) return
@@ -662,7 +726,7 @@ function setDraft(content: string): void {
   })
 }
 
-defineExpose({ setDraft })
+defineExpose({ setDraft, chatOptions })
 
 /** 输入框随内容增高，超过上限后内部滚动 */
 function autoResize() {
@@ -682,7 +746,7 @@ function sendMessage() {
   const content = text.value.trim()
   const files = selectedFiles.value.map((item) => item.file)
   if (!content && files.length === 0) return
-  emit('send', { content, files })
+  emit('send', { content, files, request: chatOptions.value })
   text.value = ''
   commandMenuDismissed.value = false
   for (const item of selectedFiles.value) {
@@ -695,7 +759,7 @@ function sendMessage() {
   })
 }
 
-// 回复期间主按钮用于停止模拟流
+// 回复期间主按钮用于停止当前回复
 function onPrimaryAction(): void {
   if (props.isResponding) emit('stop')
   else sendMessage()

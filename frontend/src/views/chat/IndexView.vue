@@ -54,6 +54,7 @@
 import { computed, provide, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import type { ChatSendRequest } from '@/api/chat'
 import { useChatSessionsStore } from '@/stores/chatSessions'
 import ChatDrawer from './components/drawer/ChatDrawer.vue'
 import ChatInput from './components/input/ChatInput.vue'
@@ -112,17 +113,20 @@ watch(
 )
 
 // 登记会话后创建本次提问的 turn
-function handleSend(message: { content: string; files: File[] }) {
+function handleSend(message: { content: string; files: File[]; request: ChatSendRequest }) {
   chatSessions.ensureSession(threadId.value)
   chatSessions.titleFromMessage(
     threadId.value,
     message.content.trim() || message.files[0]?.name || '',
   )
-  messageHandler.value?.startDemoTurn(message.content, { files: message.files })
+  messageHandler.value?.startChatTurn(message.content, {
+    files: message.files,
+    request: message.request,
+  })
 }
 
 function handleStop(): void {
-  messageHandler.value?.stopDemoStreams()
+  messageHandler.value?.stopChatTurns()
 }
 
 // 将选中的用户消息带回输入框重新编辑
@@ -136,7 +140,8 @@ function handleForkCreated(id: string): void {
 
 function handleFollowUp(question: string): void {
   if (isResponding.value) return
-  handleSend({ content: question, files: [] })
+  const options: ChatSendRequest = chatInput.value?.chatOptions ?? {}
+  handleSend({ content: question, files: [], request: options })
 }
 </script>
 
