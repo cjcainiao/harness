@@ -1,5 +1,7 @@
 export type TurnStatus = 'streaming' | 'completed' | 'failed'
 export type TurnFeedback = 'up' | 'down'
+/** 输入区提示用的流式阶段 */
+export type StreamPhase = 'idle' | 'waiting' | 'tool' | 'streaming'
 
 export interface MessageChunkItem {
   id: number

@@ -41,10 +41,10 @@
                 :disabled="isResponding"
                 @click="emit('ask-follow-up', question)"
               >
-                <span class="follow-up-label">{{ question }}</span>
                 <span class="follow-up-arrow" aria-hidden="true">
-                  <ArrowRight :size="14" :stroke-width="1.8" />
+                  <CornerDownRight :size="14" :stroke-width="1.8" />
                 </span>
+                <span class="follow-up-label">{{ question }}</span>
               </button>
             </div>
           </div>
@@ -56,7 +56,7 @@
 </template>
 
 <script setup lang="ts">
-import { ArrowRight } from 'lucide-vue-next'
+import { CornerDownRight } from 'lucide-vue-next'
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { useChatSessionsStore } from '@/stores/chatSessions'
 import MessageChunk from './MessageChunk.vue'
@@ -67,6 +67,7 @@ import UserMessage from './UserMessage.vue'
 import type {
   ChatTurn,
   MessageChunkItem,
+  StreamPhase,
   ToolItem,
   TurnFeedback,
   TurnItem,
@@ -76,6 +77,7 @@ import type {
 const props = defineProps<{ threadId: string }>()
 const emit = defineEmits<{
   'responding-change': [active: boolean]
+  'phase-change': [phase: StreamPhase]
   'edit-message': [content: string]
   'fork-created': [threadId: string]
   'ask-follow-up': [question: string]
@@ -111,27 +113,168 @@ const scrollContainer = ref<HTMLElement | null>(null)
 let nextLocatorId = 0
 const isResponding = computed(() => turns.value.some((turn) => turn.status === 'streaming'))
 
-// 仅供前端预览的回复分片
-const demoChunks = [
-  '我收到了你的消息。',
-  '\n\n这是一段前端模拟的 ',
-  '**流式回复**，',
-  '文字会分成几段',
-  '逐步显示在消息区域。',
-  '\n\n回复结束后，',
-  '右下角的 Token 用量',
-  '也会更新。',
+// 仅供前端预览的事件序列，覆盖当前所有渲染分支
+const demoEvents: MessageEvent[] = [
+  // 推理：当前无渲染器，验证不打断后续事件
+  { type: 'reasoning_chunk', content: '先确认要演示哪些组件。' },
+
+  // 正文块 A：连续分片合并为同一块
+  {
+    type: 'message_chunk',
+    message_id: 'msg-a',
+    content:
+      '## 一、正文与 Markdown\n\n' +
+      '这段文字由 **message_chunk** 事件累积，交给 `MessageChunk` 渲染，' +
+      '同一块内的分片会合并成一个段落。\n\n' +
+      '> 引用块：下面是自动识别的链接 https://github.com/bytedance/deer-flow\n\n',
+  },
+  {
+    type: 'message_chunk',
+    message_id: 'msg-a',
+    content: '\n第二段分片继续写入同一正文块，不会新建显示项。\n',
+  },
+
+  // 用量：第一次计数，稍后与第二次累计
+  {
+    type: 'usage',
+    usage: {
+      input_tokens: 512,
+      output_tokens: 96,
+      total_tokens: 608,
+      input_token_details: { cache_read: 256 },
+    },
+  },
+
+  // 工具一：参数分片带调用 ID，正常完成
+  {
+    type: 'tool_call_chunk',
+    tool: 'current_time',
+    tool_call_id: 'call_time',
+    index: 0,
+    arguments: '{"time',
+  },
+  {
+    type: 'tool_call_chunk',
+    tool_call_id: 'call_time',
+    index: 0,
+    arguments: 'zone": "Asia/Shanghai"}',
+  },
+  {
+    type: 'tool_start',
+    tool: 'current_time',
+    tool_call_id: 'call_time',
+    arguments: { timezone: 'Asia/Shanghai' },
+  },
+  {
+    type: 'tool_result',
+    tool: 'current_time',
+    tool_call_id: 'call_time',
+    content: '{"timezone":"Asia/Shanghai","datetime":"2026-09-29T10:00:00+08:00","weekday":2}',
+    duration_ms: 12,
+  },
+
+  // 工具二：首个分片只有 index 没有 ID，验证按 index 回捞；结果为失败态
+  { type: 'tool_call_chunk', tool: 'read_file', index: 1, arguments: '{"path"' },
+  {
+    type: 'tool_call_chunk',
+    tool: 'read_file',
+    tool_call_id: 'call_read',
+    index: 1,
+    arguments: ': "/etc/hosts"}',
+  },
+  {
+    type: 'tool_start',
+    tool: 'read_file',
+    tool_call_id: 'call_read',
+    arguments: { path: '/etc/hosts' },
+  },
+  {
+    type: 'tool_error',
+    tool: 'read_file',
+    tool_call_id: 'call_read',
+    content: '文件不存在：/etc/hosts',
+    duration_ms: 3,
+  },
+
+  // 工具三：无参数分片，结果无内容（Command 型返回值）
+  {
+    type: 'tool_start',
+    tool: 'dispatch_task',
+    tool_call_id: 'call_task',
+    arguments: { target: 'subagent' },
+  },
+  { type: 'tool_result', tool: 'dispatch_task', tool_call_id: 'call_task', duration_ms: 480 },
+
+  // 正文块 B：工具之后的正文，独立成块
+  {
+    type: 'message_chunk',
+    message_id: 'msg-b',
+    content:
+      '### 二、列表 / 代码 / 表格\n\n' +
+      '- 呼吸点加载动画\n- 推荐提问\n  - 嵌套列表项\n\n' +
+      '1. 有序列表\n2. 带 ~~删除线~~ 的项\n\n' +
+      '```python\n' +
+      'async def stream():\n' +
+      '    yield {"type": "message_chunk", "content": "..."}\n' +
+      '```\n\n',
+  },
+  {
+    type: 'message_chunk',
+    message_id: 'msg-b',
+    content:
+      '\n| 组件 | 触发事件 |\n| --- | --- |\n' +
+      '| MessageChunk | message_chunk |\n| ToolCallMessage | tool_start / tool_result / tool_error |\n' +
+      '| TurnActions | usage |\n| 推荐提问 | done 前写入 |\n\n---\n\n' +
+      '以上是本轮最后一段正文，用量为两次 usage 的累计值。\n',
+  },
+
+  // 用量：与第一次累加
+  { type: 'usage', usage: { input_tokens: 320, output_tokens: 148, total_tokens: 468 } },
+
+  // 自定义事件：当前仅占位
+  { type: 'custom', event: 'demo', message: '自定义事件不改变渲染' },
 ]
 const demoFollowUpQuestions = [
   '能再详细解释一下吗？',
   '可以给我一个具体示例吗？',
   '接下来该怎么做？',
 ]
+// 单个分片的推送间隔
+const demoTickMs = 40
+// 正文分片长度，接近真实 token 节奏
+const demoSliceSize = 8
+
+// 长正文拆成小分片，避免整块文字一次跳出
+function sliceDemoEvent(event: MessageEvent): MessageEvent[] {
+  const content = event.content
+  const isTextEvent = event.type === 'message_chunk' || event.type === 'reasoning_chunk'
+  if (!isTextEvent || typeof content !== 'string') return [event]
+
+  const parts: MessageEvent[] = []
+  for (let offset = 0; offset < content.length; offset += demoSliceSize) {
+    parts.push({ ...event, content: content.slice(offset, offset + demoSliceSize) })
+  }
+  return parts
+}
+const demoScript = demoEvents.flatMap(sliceDemoEvent)
 
 // 按当前 turn 状态同步输入框的回复提示
 function notifyResponding(): void {
   emit('responding-change', isResponding.value)
+  chatSessions.setResponding(props.threadId, isResponding.value)
 }
+
+// 输入区提示用的当前流式阶段
+const streamPhase = computed<StreamPhase>(() => {
+  const active = [...turns.value].reverse().find((turn) => turn.status === 'streaming')
+  if (!active) return 'idle'
+
+  const last = active.items[active.items.length - 1]
+  if (last?.type === 'tool' && (last.status === 'preparing' || last.status === 'running'))
+    return 'tool'
+  return active.items.length ? 'streaming' : 'waiting'
+})
+watch(streamPhase, (phase) => emit('phase-change', phase), { immediate: true })
 
 // 只合并相邻工具，正文块保持原有顺序
 function groupItems(renderItems: TurnItem[]): Array<MessageChunkItem | ToolGroupItem> {
@@ -287,6 +430,8 @@ watch(
   () => props.threadId,
   (nextId, previousId) => {
     if (previousId) {
+      // 先清掉上一个会话的回复状态
+      chatSessions.setResponding(previousId, false)
       stopDemoStreams()
       chatSessions.saveTurns(previousId, turns.value)
     }
@@ -515,39 +660,21 @@ function handleEvent(value: unknown, turnId: string): boolean {
   return true
 }
 
-// 前端预览：用真实事件入口逐段写入模拟回复
+// 前端预览：按事件序列走真实渲染入口
 function startDemoTurn(question: string, options: { id?: string; files?: File[] } = {}): string {
   const turnId = startTurn(question, options)
-  let chunkIndex = 0
+  let eventIndex = 0
   const timer = window.setInterval(() => {
-    if (chunkIndex < demoChunks.length) {
-      const accepted = handleEvent(
-        { type: 'message_chunk', content: demoChunks[chunkIndex], source: 'model' },
-        turnId,
-      )
-      chunkIndex += 1
-      if (accepted) return
-    } else {
-      // 固定用量用于检查会话累计效果
-      handleEvent(
-        {
-          type: 'usage',
-          usage: {
-            input_tokens: 126,
-            output_tokens: 74,
-            total_tokens: 200,
-            input_token_details: { cache_read: 32 },
-          },
-          source: 'model',
-        },
-        turnId,
-      )
-      setFollowUpQuestions(turnId, demoFollowUpQuestions)
-      handleEvent({ type: 'done', thread_id: props.threadId }, turnId)
+    if (eventIndex < demoScript.length) {
+      handleEvent({ ...demoScript[eventIndex], source: 'model' }, turnId)
+      eventIndex += 1
+      return
     }
+    setFollowUpQuestions(turnId, demoFollowUpQuestions)
+    handleEvent({ type: 'done', thread_id: props.threadId }, turnId)
     window.clearInterval(timer)
     demoStreams.delete(turnId)
-  }, 220)
+  }, demoTickMs)
   demoStreams.set(turnId, timer)
   return turnId
 }
@@ -611,36 +738,39 @@ onUnmounted(() => {
 }
 .message-item {
   min-width: 0;
+  animation: item-in 0.18s ease-out;
+}
+@keyframes item-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
 }
 .follow-up-questions {
   display: flex;
   flex-direction: column;
+  /* 按内容收窄，空白处不响应点击 */
   align-items: flex-start;
-  gap: 7px;
+  gap: 2px;
   max-width: 100%;
   margin-top: 2px;
 }
 .follow-up-question {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 15px;
+  gap: 9px;
   max-width: 100%;
-  min-height: 40px;
-  padding: 7px 8px 7px 14px;
+  padding: 5px 0;
   border: 0;
-  border-radius: 12px;
-  background: #f5f5f6;
-  color: #2b3036;
+  background: none;
+  color: #6d757e;
   cursor: pointer;
   font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 20px;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
   text-align: left;
-  transition:
-    background 0.16s ease,
-    box-shadow 0.16s ease;
+  transition: color 0.16s ease;
 }
 .follow-up-label {
   min-width: 0;
@@ -650,27 +780,21 @@ onUnmounted(() => {
   display: grid;
   place-items: center;
   flex: none;
-  width: 24px;
-  height: 24px;
-  color: #68717a;
-  transition:
-    color 0.16s ease,
-    transform 0.16s ease;
+  width: 16px;
+  height: 16px;
+  color: #9ca3aa;
+  transition: color 0.16s ease;
 }
 .follow-up-question:hover:not(:disabled) {
-  background: #eeeef0;
-  box-shadow: 0 2px 6px #0000000a;
+  color: #0d0d0d;
 }
 .follow-up-question:hover:not(:disabled) .follow-up-arrow {
-  color: #30363d;
-  transform: translateX(2px);
-}
-.follow-up-question:active:not(:disabled) {
-  background: #e6e7e9;
+  color: #57606a;
 }
 .follow-up-question:focus-visible {
   outline: 2px solid #8b9fc7;
   outline-offset: 2px;
+  border-radius: 6px;
 }
 .follow-up-question:disabled {
   opacity: 0.55;
@@ -680,6 +804,9 @@ onUnmounted(() => {
   .follow-up-question,
   .follow-up-arrow {
     transition: none;
+  }
+  .message-item {
+    animation: none;
   }
 }
 </style>

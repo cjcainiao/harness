@@ -11,6 +11,13 @@ export interface ChatSession {
 export const useChatSessionsStore = defineStore('chatSessions', () => {
   const sessions = ref<ChatSession[]>([])
   const turnsByThread = ref<Record<string, ChatTurn[]>>({})
+  // 正在回复的会话，侧边栏动画用
+  const respondingThreadId = ref<string | null>(null)
+
+  function setResponding(id: string, active: boolean): void {
+    if (active) respondingThreadId.value = id
+    else if (respondingThreadId.value === id) respondingThreadId.value = null
+  }
 
   function ensureSession(id: string): ChatSession {
     const existing = sessions.value.find((session) => session.id === id)
@@ -62,5 +69,15 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     )
   }
 
-  return { sessions, createSession, ensureSession, titleFromMessage, saveTurns, getTurns, getUsage }
+  return {
+    sessions,
+    respondingThreadId,
+    createSession,
+    ensureSession,
+    setResponding,
+    titleFromMessage,
+    saveTurns,
+    getTurns,
+    getUsage,
+  }
 })

@@ -1,5 +1,5 @@
 <template>
-  <div class="chat-index">
+  <div class="chat-index" @keydown.esc="closeDrawer">
     <SessionHeader
       :title="sessionTitle"
       :sidebar-open="sidebarOpen"
@@ -11,6 +11,7 @@
         ref="messageHandler"
         :thread-id="threadId"
         @responding-change="isResponding = $event"
+        @phase-change="streamPhase = $event"
         @edit-message="handleEditMessage"
         @fork-created="handleForkCreated"
         @ask-follow-up="handleFollowUp"
@@ -18,6 +19,7 @@
     </div>
     <!-- 底部固定区 -->
     <footer class="chat-bottom">
+      <StreamStatus :active="isResponding" :phase="streamPhase" />
       <ChatInput
         ref="chatInput"
         :key="threadId"
@@ -38,17 +40,28 @@
         :total-tokens="sessionUsage.totalTokens"
       />
     </footer>
+    <!-- 右侧抽屉：按需嵌入不同页面 -->
+    <ChatDrawer
+      :page="drawerPage"
+      :title="drawerTitle"
+      :page-props="drawerProps"
+      @close="closeDrawer"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, provide, ref, watch } from 'vue'
+import type { Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useChatSessionsStore } from '@/stores/chatSessions'
+import ChatDrawer from './components/drawer/ChatDrawer.vue'
 import ChatInput from './components/input/ChatInput.vue'
+import StreamStatus from './components/input/StreamStatus.vue'
 import UsageBar from './components/input/UsageBar.vue'
 import MessageEventHandler from './components/message/MessageEventHandler.vue'
 import SessionHeader from './components/message/SessionHeader.vue'
+import type { StreamPhase } from './components/message/messageTurn'
 
 withDefaults(defineProps<{ sidebarOpen?: boolean }>(), { sidebarOpen: false })
 const emit = defineEmits<{ 'toggle-sidebar': [] }>()
@@ -65,11 +78,30 @@ const threadId = computed(() => {
 const messageHandler = ref<InstanceType<typeof MessageEventHandler> | null>(null)
 const chatInput = ref<InstanceType<typeof ChatInput> | null>(null)
 const isResponding = ref(false)
+const streamPhase = ref<StreamPhase>('idle')
 const sessionTitle = computed(
   () => chatSessions.sessions.find((session) => session.id === threadId.value)?.title ?? '新对话',
 )
 // 按当前 thread 汇总累计 Token 用量
 const sessionUsage = computed(() => chatSessions.getUsage(threadId.value))
+
+// 抽屉里嵌入的页面，为空即关闭
+const drawerPage = ref<Component | null>(null)
+const drawerTitle = ref('')
+const drawerProps = ref<Record<string, unknown>>({})
+
+function openDrawer(page: Component, title: string, pageProps: Record<string, unknown> = {}): void {
+  drawerPage.value = page
+  drawerTitle.value = title
+  drawerProps.value = pageProps
+}
+
+function closeDrawer(): void {
+  drawerPage.value = null
+}
+
+// 抽屉开合方法交子组件直接调用
+provide('chat-drawer-open', openDrawer)
 
 watch(
   () => route.query.thread_id,
@@ -109,7 +141,9 @@ function handleFollowUp(question: string): void {
 </script>
 
 <style scoped>
+/* 抽屉的定位基准 */
 .chat-index {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -120,6 +154,5 @@ function handleFollowUp(question: string): void {
 }
 .chat-bottom {
   flex-shrink: 0;
-  padding-top: 12px;
 }
 </style>

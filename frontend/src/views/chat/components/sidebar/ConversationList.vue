@@ -10,10 +10,12 @@
         :class="{ 'is-active': route.query.thread_id === item.id }"
         type="button"
         :aria-current="route.query.thread_id === item.id ? 'page' : undefined"
+        :aria-busy="chatSessions.respondingThreadId === item.id || undefined"
         @click="openConversation(item.id)"
       >
         <MessageSquare :size="14" />
         <span class="item-title">{{ item.title }}</span>
+        <DotsMatrix v-if="chatSessions.respondingThreadId === item.id" class="item-dots" />
       </button>
     </section>
   </div>
@@ -23,6 +25,7 @@
 import { MessageSquare } from 'lucide-vue-next'
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import DotsMatrix from '@/components/DotsMatrix.vue'
 import { useChatSessionsStore } from '@/stores/chatSessions'
 import type { ChatSession } from '@/stores/chatSessions'
 
@@ -82,8 +85,14 @@ function openConversation(threadId: string): void {
   }
 }
 .item-title {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+.item-dots {
+  margin-left: 2px;
+  opacity: 0.75;
 }
 </style>
