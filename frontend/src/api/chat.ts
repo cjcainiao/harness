@@ -7,7 +7,7 @@ export interface ChatStreamRequest {
   message: string
   // 会话标识
   thread_id?: string
-  // 所选模型标识
+  // 实际模型名称
   model_name?: string
   // 是否启用推理
   thinking_enabled?: boolean

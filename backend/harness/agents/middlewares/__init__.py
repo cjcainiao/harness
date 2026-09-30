@@ -1,7 +1,14 @@
 # Agent 中间件
 
 from harness.agents.middlewares.builder import build_agent_middleware
+from harness.agents.middlewares.deferred_tool_filter import DeferredToolFilterMiddleware
+from harness.agents.middlewares.model_debug import ModelDebugMiddleware
 from harness.agents.middlewares.tool_call import ToolCallMiddleware
 
 
-__all__ = ["ToolCallMiddleware", "build_agent_middleware"]
+__all__ = [
+    "DeferredToolFilterMiddleware",
+    "ModelDebugMiddleware",
+    "ToolCallMiddleware",
+    "build_agent_middleware",
+]

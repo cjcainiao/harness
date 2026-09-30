@@ -58,24 +58,31 @@ class ToolCallMiddleware(AgentMiddleware):
             payload["type"] = "tool_result"
         self._emit(request, payload)
 
-    # 发送工具异常事件
-    def _emit_error(
+    # 发送工具异常事件，返回 error ToolMessage 回传给模型
+    def _handle_error(
         self, request: ToolCallRequest, error: Exception, started_at: float
-    ) -> None:
+    ) -> ToolMessage:
         logger.error(
             "工具调用失败",
             **self._identity(request),
             error=str(error),
             exc_info=True,
         )
+        message = f"工具执行异常：{error}"
         self._emit(
             request,
             {
                 "type": "tool_error",
                 **self._identity(request),
                 "duration_ms": round((time.perf_counter() - started_at) * 1000),
-                "message": "工具调用失败",
+                "message": message,
             },
+        )
+        return ToolMessage(
+            content=message,
+            name=request.tool_call["name"],
+            tool_call_id=request.tool_call["id"],
+            status="error",
         )
 
     # 包装同步工具调用
@@ -91,8 +98,7 @@ class ToolCallMiddleware(AgentMiddleware):
         except GraphBubbleUp:
             raise
         except Exception as error:
-            self._emit_error(request, error, started_at)
-            raise
+            return self._handle_error(request, error, started_at)
         self._emit_result(request, result, started_at)
         return result
 
@@ -109,7 +115,6 @@ class ToolCallMiddleware(AgentMiddleware):
         except GraphBubbleUp:
             raise
         except Exception as error:
-            self._emit_error(request, error, started_at)
-            raise
+            return self._handle_error(request, error, started_at)
         self._emit_result(request, result, started_at)
         return result

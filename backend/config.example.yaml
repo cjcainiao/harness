@@ -44,18 +44,66 @@ models:
 # 工具分组，仅用于分类和筛选
 tool_groups:
   - name: system
+  - name: text
 
 # 工具列表
 tools:
+  # 系统工具
   - name: current_time # 工具名称
     group: system # 所属工具组
-    use: harness.tools.system.current_time:current_time # 工具实现
+    use: harness.tools.system.system_info:current_time # 工具实现
     enabled: true # 是否启用
-    exposure: direct # 模型可见方式：direct 直接提供，search 按需查找
     aliases: [当前时间, 今天日期] # 查找别名
-    settings: {} # 工具额外配置
+    settings: {
+      default_timezones: [Asia/Shanghai] # 默认时区列表
+    } # 工具额外配置
+
+  - name: read_file # 工具名称
+    group: system # 所属工具组
+    use: harness.tools.system.file_operations:read_file # 工具实现
+    enabled: true # 是否启用
+    aliases: [读取文件, 查看文件] # 查找别名
+    settings: {
+      default_max_bytes: 100000 # 最大读取字节数
+    } # 工具额外配置
+
+  - name: list_dir # 工具名称
+    group: system # 所属工具组
+    use: harness.tools.system.file_operations:list_dir # 工具实现
+    enabled: true # 是否启用
+    aliases: [列目录, 浏览文件] # 查找别名
+    settings: {
+      default_max_entries: 200 # 最大返回条目数
+    } # 工具额外配置
+
+  - name: edit_file # 工具名称
+    group: system # 所属工具组
+    use: harness.tools.system.file_operations:edit_file # 工具实现
+    enabled: true # 是否启用
+    aliases: [编辑文件, 写入文件] # 查找别名
+
+  - name: delete_file # 工具名称
+    group: system # 所属工具组
+    use: harness.tools.system.file_operations:delete_file # 工具实现
+    enabled: true # 是否启用
+    aliases: [删除文件, 移除文件] # 查找别名
+
+  - name: tool_search # 工具名称
+    group: system # 所属工具组
+    use: harness.tools.tool_search:tool_search # 工具实现
+    enabled: true # 是否启用
+    aliases: [查找工具, 搜索工具] # 查找别名
+    settings: {
+      default_max_results: 5 # 本工具最多返回命中条数
+    } # 工具额外配置
+
+  - name: word_count # 工具名称
+    group: text # 所属工具组
+    use: harness.tools.text.word_count:word_count # 工具实现
+    enabled: true # 是否启用
+    aliases: [字数统计, 统计字数] # 查找别名
 
 # 工具查找配置
 tool_search:
-  enabled: false
+  enabled: true
   max_results: 5

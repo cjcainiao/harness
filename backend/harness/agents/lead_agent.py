@@ -13,6 +13,7 @@ from harness.agents.middlewares.builder import build_agent_middleware
 from harness.config.app_config import AppConfig, get_app_config
 from harness.models.factory import ReasoningEffort, create_chat_model
 from harness.tools.loader import load_default_tools
+from harness.tools.tool_search import build_registry, deferred_tools_section
 
 
 Tool = BaseTool | Callable[..., Any] | dict[str, Any]
@@ -44,14 +45,23 @@ def create_lead_agent(
 
     # 默认工具与传入工具共存，同名时传入的优先
     bound_tools = {tool.name: tool for tool in load_default_tools()}
+
+    # 懒加载开启时注册非默认组工具
+    if config.tool_search.get("enabled"):
+        bound_tools.update((tool.name, tool) for tool in build_registry())
+
     bound_tools.update((tool.name, tool) for tool in tools or ())
+
+    # 提示词追加懒加载工具名单
+    prompt = system_prompt if system_prompt is not None else DEFAULT_SYSTEM_PROMPT
+    prompt += deferred_tools_section()
 
     # 统一组装模型、工具、中间件和系统提示词
     return create_agent(
         model=model,
         tools=list(bound_tools.values()),
         middleware=build_agent_middleware(middleware),
-        system_prompt=system_prompt if system_prompt is not None else DEFAULT_SYSTEM_PROMPT,
+        system_prompt=prompt,
         debug=config.system.debug,
         name="lead-agent",
     )

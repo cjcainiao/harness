@@ -48,7 +48,7 @@ def resolve_model_class(class_path: str) -> type[BaseChatModel]:
     return model_class
 
 
-# 根据名称获取模型配置，第一个模型为默认模型
+# 按配置名称或实际模型名称获取模型配置，第一个模型为默认模型
 def _get_model_config(config: AppConfig, name: str | None) -> ModelConfig:
     if not config.models:
         raise ValueError("未配置任何模型")
@@ -56,7 +56,7 @@ def _get_model_config(config: AppConfig, name: str | None) -> ModelConfig:
     if name is None:
         return config.models[0]
 
-    model_config = next((item for item in config.models if item.name == name), None)
+    model_config = next((item for item in config.models if name in (item.name, item.model)), None)
     if model_config is None:
         raise ValueError(f"模型配置不存在：{name}")
     return model_config

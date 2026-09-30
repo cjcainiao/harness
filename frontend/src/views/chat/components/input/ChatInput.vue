@@ -560,7 +560,7 @@ const chatOptions = computed<ChatSendRequest>(() => {
   const effort = reasoningEffort.value
   const levels = selectedModel.value?.reasoning_levels ?? []
   return {
-    model_name: selectedModelName.value || undefined,
+    model_name: selectedModel.value?.model || undefined,
     thinking_enabled: effort !== EFFORT_OFF,
     reasoning_effort: levels.includes(effort) ? effort : undefined,
   }
