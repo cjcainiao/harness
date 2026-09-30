@@ -12,6 +12,7 @@ class ModelConfig(BaseModel):
     name: str = Field(description="模型名称")
     display_name: str | None = Field(default=None, description="模型显示名称")
     description: str | None = Field(default=None, description="模型描述")
+    provider: str = Field(description="模型厂商")
     use: str = Field(description="模型实现类")
     model: str = Field(description="服务商模型名称")
     supports_thinking: bool = Field(default=False, description="是否支持推理")

@@ -25,6 +25,8 @@ system:
 models:
   - name: deepseek # 模型名称
     display_name: DeepSeek Flash # 显示名称
+    description: DeepSeek 快速模型，支持推理与视觉 # 模型描述
+    provider: deepseek # 模型厂商
     use: harness.models.deepseek_provider:DeepSeekChatModel # 模型实现
     model: deepseek-flash # 实际模型名称
     base_url: https://api.deepseek.com # 服务地址

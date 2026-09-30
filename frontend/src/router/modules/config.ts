@@ -12,6 +12,11 @@ const configRoutes: RouteRecordRaw[] = [
         name: 'config-index',
         component: () => import('@/views/config/IndexView.vue'),
       },
+      {
+        path: 'model',
+        name: 'config-model',
+        component: () => import('@/views/config/pages/ModelView.vue'),
+      },
     ],
   },
 ]

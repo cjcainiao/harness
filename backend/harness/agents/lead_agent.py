@@ -12,6 +12,7 @@ from langchain_core.tools import BaseTool
 from harness.agents.middlewares.builder import build_agent_middleware
 from harness.config.app_config import AppConfig, get_app_config
 from harness.models.factory import ReasoningEffort, create_chat_model
+from harness.tools.loader import load_default_tools
 
 
 Tool = BaseTool | Callable[..., Any] | dict[str, Any]
@@ -41,10 +42,14 @@ def create_lead_agent(
         app_config=config,
     )
 
+    # 默认工具与传入工具共存，同名时传入的优先
+    bound_tools = {tool.name: tool for tool in load_default_tools()}
+    bound_tools.update((tool.name, tool) for tool in tools or ())
+
     # 统一组装模型、工具、中间件和系统提示词
     return create_agent(
         model=model,
-        tools=list(tools or ()),
+        tools=list(bound_tools.values()),
         middleware=build_agent_middleware(middleware),
         system_prompt=system_prompt if system_prompt is not None else DEFAULT_SYSTEM_PROMPT,
         debug=config.system.debug,

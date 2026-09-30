@@ -19,7 +19,13 @@
           <SquarePen :size="16" />
           <span>新对话</span>
         </button>
-        <button class="menu-item" type="button">
+        <button
+          class="menu-item"
+          type="button"
+          aria-haspopup="dialog"
+          :aria-expanded="searchVisible"
+          @click="searchVisible = true"
+        >
           <Search :size="16" />
           <span>搜索</span>
         </button>
@@ -99,6 +105,8 @@
         </div>
       </ElPopover>
     </footer>
+    <!-- 搜索弹窗，Teleport 到 body，不受侧栏收起时的 inert 影响 -->
+    <ConversationSearch v-model:visible="searchVisible" />
   </aside>
 </template>
 
@@ -119,6 +127,7 @@ import { useRouter } from 'vue-router'
 import { useChatSessionsStore } from '@/stores/chatSessions'
 
 import ConversationList from './ConversationList.vue'
+import ConversationSearch from './ConversationSearch.vue'
 
 interface SettingOption {
   id: string
@@ -134,6 +143,7 @@ const router = useRouter()
 const chatSessions = useChatSessionsStore()
 
 const isSettingsOpen = ref(false)
+const searchVisible = ref(false)
 // 气泡挂在 body 上，侧栏不可见时必须显式关闭
 const settingsVisible = computed({
   get: () => isSettingsOpen.value && props.sidebarVisible,

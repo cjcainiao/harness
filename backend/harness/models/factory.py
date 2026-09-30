@@ -16,6 +16,7 @@ _MODEL_METADATA_FIELDS = {
     "name",
     "display_name",
     "description",
+    "provider",
     "use",
     "supports_thinking",
     "reasoning_levels",

@@ -9,6 +9,8 @@ export interface ModelInfo {
   display_name: string
   // 模型说明
   description: string | null
+  // 模型厂商
+  provider: string
   // 模型实现类路径
   use: string
   // 服务商模型名称
