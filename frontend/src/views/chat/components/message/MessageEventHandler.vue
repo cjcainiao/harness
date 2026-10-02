@@ -18,6 +18,13 @@
           <div class="turn-reply">
             <div v-for="item in turn.displayItems" :key="item.id" class="message-item">
               <MessageChunk v-if="item.type === 'message_chunk'" :content="item.content" />
+              <MessageReasoning
+                v-else-if="item.type === 'reasoning'"
+                :content="item.content"
+                :started-at="item.startedAt"
+                :duration-ms="item.durationMs"
+                :streaming="turn.status === 'streaming' && item.id === turn.lastItemId"
+              />
               <ToolCallMessage v-else :tools="item.tools" />
             </div>
             <TurnActions
@@ -62,12 +69,14 @@ import { streamChat, type ChatSendRequest, type ChatStreamRequest } from '@/api/
 import { useChatSessionsStore } from '@/stores/chatSessions'
 import MessageChunk from './MessageChunk.vue'
 import MessageLocator from './MessageLocator.vue'
+import MessageReasoning from './MessageReasoning.vue'
 import ToolCallMessage from './ToolCallMessage.vue'
 import TurnActions from './TurnActions.vue'
 import UserMessage from './UserMessage.vue'
 import type {
   ChatTurn,
   MessageChunkItem,
+  ReasoningItem,
   StreamPhase,
   ToolItem,
   TurnFeedback,
@@ -103,6 +112,7 @@ interface TurnState extends ChatTurn {
 interface TurnRuntime {
   nextItemId: number
   activeTextItemId: number | null
+  activeReasoningItemId: number | null
   toolItemsByCallId: Map<string, number>
   toolItemsByIndex: Map<number, number>
 }
@@ -132,12 +142,14 @@ const streamPhase = computed<StreamPhase>(() => {
 })
 watch(streamPhase, (phase) => emit('phase-change', phase), { immediate: true })
 
-// 只合并相邻工具，正文块保持原有顺序
-function groupItems(renderItems: TurnItem[]): Array<MessageChunkItem | ToolGroupItem> {
-  const items: Array<MessageChunkItem | ToolGroupItem> = []
+// 只合并相邻工具，正文与推理块保持原有顺序
+function groupItems(
+  renderItems: TurnItem[],
+): Array<MessageChunkItem | ReasoningItem | ToolGroupItem> {
+  const items: Array<MessageChunkItem | ReasoningItem | ToolGroupItem> = []
 
   for (const item of renderItems) {
-    if (item.type === 'message_chunk') {
+    if (item.type !== 'tool') {
       items.push(item)
       continue
     }
@@ -157,6 +169,7 @@ const displayTurns = computed(() =>
   turns.value.map((turn) => ({
     ...turn,
     displayItems: groupItems(turn.items),
+    lastItemId: turn.items[turn.items.length - 1]?.id ?? -1,
     visibleFollowUps:
       turn.followUpQuestions?.map((question) => question.trim()).filter(Boolean) ?? [],
   })),
@@ -210,6 +223,7 @@ function createRuntime(items: TurnItem[] = []): TurnRuntime {
   return {
     nextItemId: items.reduce((nextId, item) => Math.max(nextId, item.id + 1), 0),
     activeTextItemId: null,
+    activeReasoningItemId: null,
     toolItemsByCallId: new Map(
       items.flatMap((item) =>
         item.type === 'tool' && item.toolCallId ? [[item.toolCallId, item.id] as const] : [],
@@ -311,6 +325,21 @@ function closeMessageChunk(runtime: TurnRuntime): void {
   runtime.activeTextItemId = null
 }
 
+// 结束当前推理块并记录耗时，供标题悬停显示
+function closeReasoning(turn: TurnState, runtime: TurnRuntime): void {
+  const activeId = runtime.activeReasoningItemId
+  runtime.activeReasoningItemId = null
+  if (activeId === null) return
+
+  const item = turn.items.find((entry) => entry.id === activeId)
+  if (item?.type === 'reasoning') item.durationMs = elapsedSince(item.startedAt)
+}
+
+// 从时间戳算经过的毫秒数
+function elapsedSince(startedAt?: number): number | undefined {
+  return startedAt === undefined ? undefined : Date.now() - startedAt
+}
+
 // 只合并同一正文块内的连续文字片段
 function handleMessageChunk(turn: TurnState, runtime: TurnRuntime, event: MessageEvent): void {
   if (typeof event.content !== 'string' || event.content.length === 0) return
@@ -363,6 +392,7 @@ function getToolItem(
       type: 'tool',
       tool: '',
       status: 'preparing',
+      startedAt: Date.now(),
     }
     turn.items.push(item)
   }
@@ -395,6 +425,7 @@ function handleToolResult(turn: TurnState, runtime: TurnRuntime, event: MessageE
   item.status = 'success'
   if (event.content !== undefined) item.output = event.content
   if (typeof event.duration_ms === 'number') item.durationMs = event.duration_ms
+  else item.durationMs ??= elapsedSince(item.startedAt)
 }
 
 function handleToolError(turn: TurnState, runtime: TurnRuntime, event: MessageEvent): void {
@@ -403,10 +434,30 @@ function handleToolError(turn: TurnState, runtime: TurnRuntime, event: MessageEv
   item.status = 'error'
   item.output = event.content ?? event.message
   if (typeof event.duration_ms === 'number') item.durationMs = event.duration_ms
+  else item.durationMs ??= elapsedSince(item.startedAt)
 }
 
-// 推理与自定义事件暂留扩展入口
-function handleReasoningChunk(_event: MessageEvent): void {}
+// 连续到达的推理片段合并进同一显示项，被正文或工具调用打断后另起一项
+function handleReasoningChunk(turn: TurnState, runtime: TurnRuntime, event: MessageEvent): void {
+  if (typeof event.content !== 'string' || event.content.length === 0) return
+
+  const last = turn.items[turn.items.length - 1]
+  if (last?.type === 'reasoning') {
+    last.content += event.content
+    last.durationMs = elapsedSince(last.startedAt)
+    runtime.activeReasoningItemId = last.id
+    return
+  }
+
+  const id = runtime.nextItemId++
+  turn.items.push({
+    id,
+    type: 'reasoning',
+    content: event.content,
+    startedAt: Date.now(),
+  })
+  runtime.activeReasoningItemId = id
+}
 // 忽略无效 Token 计数，避免累计值出错
 function readTokenCount(value: unknown): number | null {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
@@ -465,13 +516,16 @@ function handleEvent(value: unknown, turnId: string): boolean {
     container !== null &&
     container.scrollHeight - container.scrollTop - container.clientHeight <= 96
 
+  // 除推理片段本身，其他事件都表示上一段推理已经结束
+  if (value.type !== 'reasoning_chunk') closeReasoning(turn, runtime)
+
   switch (value.type) {
     case 'message_chunk':
       handleMessageChunk(turn, runtime, value)
       break
     case 'reasoning_chunk':
       closeMessageChunk(runtime)
-      handleReasoningChunk(value)
+      handleReasoningChunk(turn, runtime, value)
       break
     case 'tool_call_chunk':
       closeMessageChunk(runtime)

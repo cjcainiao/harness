@@ -1,6 +1,17 @@
 <template>
   <div class="user-message">
-    <div v-if="attachments.length" class="attachment-list" role="list" aria-label="消息附件">
+    <div
+      v-if="attachments.length"
+      ref="attachmentListRef"
+      class="attachment-list"
+      :class="{ 'is-dragging': attachmentsDragging }"
+      role="list"
+      aria-label="消息附件"
+      @pointerdown="onAttachmentsPointerDown"
+      @pointermove="onAttachmentsPointerMove"
+      @pointerup="onAttachmentsPointerUp"
+      @pointercancel="onAttachmentsPointerUp"
+    >
       <div
         v-for="attachment in attachments"
         :key="attachment.id"
@@ -14,9 +25,13 @@
           :src="attachment.previewUrl"
           alt=""
         />
-        <div v-else class="attachment-icon">
-          <component :is="fileIcon(attachment)" :size="28" :stroke-width="1.5" />
-        </div>
+        <!-- 非图片附件用按扩展名匹配的图标素材 -->
+        <img
+          v-else
+          class="attachment-icon"
+          :src="resolveFileIconUrl(attachment.name)"
+          :alt="`${attachment.name} 的类型图标`"
+        />
         <div class="attachment-details">
           <span class="attachment-name">{{ attachment.name }}</span>
           <span class="attachment-size">{{ formatSize(attachment.size) }}</span>
@@ -73,8 +88,19 @@
 import { ElTooltip } from 'element-plus'
 import 'element-plus/es/components/tooltip/style/css'
 import { computed, onUnmounted, ref } from 'vue'
-import { Check, Copy, File, FileImage, FileSpreadsheet, FileText, Pencil } from 'lucide-vue-next'
+import { Check, Copy, Pencil } from 'lucide-vue-next'
 import type { ChatAttachment } from './messageTurn'
+import { useDragScroll } from '@/utils/dragScrollUtil'
+import { resolveFileIconUrl } from '@/utils/fileIconUtil'
+
+// 附件条只占一排，超出用横向拖动滚动，触屏交给原生滑动
+const {
+  scrollRef: attachmentListRef,
+  isDragging: attachmentsDragging,
+  onPointerDown: onAttachmentsPointerDown,
+  onPointerMove: onAttachmentsPointerMove,
+  onPointerUp: onAttachmentsPointerUp,
+} = useDragScroll()
 
 // 显示当前 turn 的用户文字和附件
 const props = withDefaults(
@@ -112,14 +138,6 @@ async function copyMessage(): Promise<void> {
 }
 
 onUnmounted(() => window.clearTimeout(copiedTimer))
-
-function fileIcon(attachment: ChatAttachment) {
-  const extension = attachment.name.split('.').pop()?.toLowerCase()
-  if (attachment.type.startsWith('image/')) return FileImage
-  if (extension && ['xls', 'xlsx', 'csv', 'ods'].includes(extension)) return FileSpreadsheet
-  if (extension && ['pdf', 'doc', 'docx', 'txt', 'md', 'rtf'].includes(extension)) return FileText
-  return File
-}
 
 function formatSize(size: number): string {
   if (size < 1024) return `${size} B`
@@ -195,7 +213,17 @@ function formatSize(size: number): string {
   width: max-content;
   max-width: 100%;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   padding-bottom: 2px;
+  scrollbar-width: none;
+  cursor: grab;
+}
+.attachment-list::-webkit-scrollbar {
+  display: none;
+}
+.attachment-list.is-dragging {
+  cursor: grabbing;
+  user-select: none;
 }
 .attachment-card {
   flex: 0 0 150px;
@@ -214,10 +242,10 @@ function formatSize(size: number): string {
   object-fit: cover;
 }
 .attachment-icon {
-  display: grid;
-  place-items: center;
+  box-sizing: border-box;
+  object-fit: contain;
+  padding: 18px 0;
   background: #f8f9fa;
-  color: #757d86;
 }
 .attachment-details {
   display: flex;

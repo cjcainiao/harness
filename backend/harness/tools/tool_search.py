@@ -148,7 +148,7 @@ class ToolSearchArgs(BaseModel):
     # 检索词
     query: str = Field(
         min_length=1,
-        description="检索词，用于匹配工具别名、名称和说明，例如 翻译、unit convert",
+        description="检索词，只能是一个 2-4 字的核心能力词或工具名，例如 字数、时间、文件；不要写成句子或描述需求",
     )
 
     # 限定工具组
@@ -170,12 +170,14 @@ class ToolSearchArgs(BaseModel):
 def tool_search(query: str, group: str | None = None, max_results: int | None = None) -> str:
     """查找未绑定给模型的懒加载工具，取回其完整参数定义。
 
-    已绑定的工具满足不了需求时使用，按检索词在工具目录里匹配别名、名称和说明，返回命中工具的函数定义。
-    定义里带参数 JSON Schema，取到后本轮即可直接调用该工具，不必重复查找。
-    目录里没有命中时返回空数组；检索词为空或上限非正数时工具报错，错误原因随工具结果返回。
+    已绑定的工具满足不了需求时使用。检索词是整段包含匹配，不是语义搜索：只用一个 2-4 字的核心能力词，
+    或提示词里列出的工具名，写成“统计这段文字有多少字”这类句子必然搜不到。
+    返回空数组时换一个更短的能力词再试一次就够，不要反复改写检索词连续搜索。
+    命中的定义带参数 JSON Schema，取到后本轮即可直接调用该工具，不必重复查找。
+    检索词为空或上限非正数时工具报错，错误原因随工具结果返回。
 
     Args:
-        query: 检索词，用于匹配工具别名、名称和说明，例如 翻译、unit convert。
+        query: 检索词，只能是一个 2-4 字的核心能力词或工具名，例如 字数、时间、文件；不要写成句子或描述需求。
         group: 限定工具组，只在该组内检索；未提供时全目录检索。
         max_results: 返回条目上限，工具配置 default_max_results 与全局 tool_search 段的 max_results 都未配置时生效。
 

@@ -10,6 +10,17 @@ export interface MessageChunkItem {
   messageId?: string
 }
 
+/** 模型一次响应里连续到达的推理内容 */
+export interface ReasoningItem {
+  id: number
+  type: 'reasoning'
+  content: string
+  /** 本段推理开始到达的时间戳 */
+  startedAt?: number
+  /** 本段推理结束的时间差，结束后悬停才显示 */
+  durationMs?: number
+}
+
 export interface ToolItem {
   id: number
   type: 'tool'
@@ -17,11 +28,13 @@ export interface ToolItem {
   status: 'preparing' | 'running' | 'success' | 'error'
   arguments?: unknown
   output?: unknown
+  /** 工具开始执行的时间戳，用于前端自己计时 */
+  startedAt?: number
   durationMs?: number
   toolCallId?: string
 }
 
-export type TurnItem = MessageChunkItem | ToolItem
+export type TurnItem = MessageChunkItem | ReasoningItem | ToolItem
 
 export interface ChatAttachment {
   id: string

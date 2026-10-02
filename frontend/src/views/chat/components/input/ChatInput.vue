@@ -15,6 +15,20 @@
       @drop="onFileDrop"
     >
       <div v-if="isFileDragging" class="file-drop-hint" aria-hidden="true">松开以添加文件</div>
+      <!-- 顶边手柄：外层透明命中区跨边框居中，内层胶囊悬停/聚焦才显形，双击恢复自动高度 -->
+      <div
+        class="resize-handle"
+        :class="{ 'is-resizing': isResizing }"
+        role="separator"
+        aria-label="拖动调整输入框高度"
+        @pointerdown="onResizePointerDown"
+        @pointermove="onResizePointerMove"
+        @pointerup="onResizePointerUp"
+        @pointercancel="onResizePointerUp"
+        @dblclick="resetInputHeight"
+      >
+        <span class="resize-grip"></span>
+      </div>
       <input
         ref="fileInputRef"
         class="file-input"
@@ -24,7 +38,19 @@
         aria-hidden="true"
         @change="onFilesSelected"
       />
-      <div v-if="selectedFiles.length" class="selected-files" role="list" aria-label="已选文件">
+      <div
+        v-if="selectedFiles.length"
+        ref="filesScrollRef"
+        class="selected-files"
+        :class="{ 'is-dragging': filesDragging }"
+        role="list"
+        aria-label="已选文件"
+        @pointerdown="onFilesPointerDown"
+        @pointermove="onFilesPointerMove"
+        @pointerup="onFilesPointerUp"
+        @pointercancel="onFilesPointerUp"
+        @click.capture="onFilesClickCapture"
+      >
         <div
           v-for="(item, index) in selectedFiles"
           :key="fileKey(item.file)"
@@ -37,24 +63,18 @@
             :src="item.previewUrl"
             :alt="`${item.file.name} 的缩略图`"
           />
-          <FileIcon
+          <!-- 非图片文件用按扩展名匹配的图标素材 -->
+          <img
             v-else
             class="file-card-icon"
-            :size="22"
-            :stroke-width="1.7"
-            aria-hidden="true"
+            :src="resolveFileIconUrl(item.file.name)"
+            :alt="`${item.file.name} 的类型图标`"
           />
           <div class="file-chip-name">
-            <component
-              :is="fileIcons[fileKind(item.file)]"
-              class="file-type-icon"
-              :class="`is-${fileKind(item.file)}`"
-              :size="14"
-              :stroke-width="1.8"
-              aria-hidden="true"
-            />
             <span>{{ item.file.name }}</span>
           </div>
+          <!-- 上传中遮罩：灰黑铺满卡片，顺时针擦除 -->
+          <span class="file-upload-sweep" aria-hidden="true" />
           <button
             class="file-remove-btn"
             type="button"
@@ -70,6 +90,7 @@
         ref="textareaRef"
         v-model="text"
         class="input-textarea"
+        :style="textareaStyle"
         rows="1"
         placeholder="规划与编程，@ 添加上下文，/ 使用命令"
         :aria-controls="isCommandMenuOpen ? 'slash-command-menu' : undefined"
@@ -301,7 +322,7 @@
             :class="{ 'is-responding': isResponding }"
             type="button"
             :aria-label="isResponding ? '停止回复' : '发送消息'"
-            :disabled="!isResponding && !text.trim() && selectedFiles.length === 0"
+            :disabled="!isResponding && !text.trim()"
             @click="onPrimaryAction"
           >
             <Square v-if="isResponding" :size="12" fill="currentColor" :stroke-width="1.5" />
@@ -320,10 +341,6 @@ import {
   CirclePlay,
   ChevronDown,
   ChevronRight,
-  File as FileIcon,
-  FileImage,
-  FileSpreadsheet,
-  FileText,
   Plus,
   ShieldCheck,
   Square,
@@ -337,6 +354,9 @@ import 'element-plus/es/components/tooltip/style/css'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { ChatSendRequest } from '@/api/chat'
 import { fetchModels, type ModelInfo } from '@/api/config'
+import { useDragScroll } from '@/utils/dragScrollUtil'
+import { resolveFileIconUrl } from '@/utils/fileIconUtil'
+import { describeRejectedUploadFiles, isAllowedUploadFile } from '@/utils/fileUploadUtil'
 import EnergyField from './EnergyField.vue'
 import SlashCommandMenu from './SlashCommandMenu.vue'
 
@@ -359,20 +379,12 @@ const textareaRef = ref<HTMLTextAreaElement>()
 const sendButtonRef = ref<HTMLButtonElement>()
 const fileInputRef = ref<HTMLInputElement>()
 type SelectedFile = { file: File; previewUrl: string | null }
-type FileKind = 'image' | 'sheet' | 'pdf' | 'document' | 'other'
 const selectedFiles = ref<SelectedFile[]>([])
 const isFileDragging = ref(false)
 const modelButtonRef = ref<HTMLButtonElement>()
 const isModelMenuOpen = ref(false)
 const showModelOptions = ref(false)
 let dragDepth = 0
-const fileIcons = {
-  image: FileImage,
-  sheet: FileSpreadsheet,
-  pdf: FileText,
-  document: FileText,
-  other: FileIcon,
-} as const
 
 const permissionOptions = [
   {
@@ -408,15 +420,6 @@ function selectPermission(value: PermissionMode) {
   isAccessMenuOpen.value = false
 }
 
-function fileKind(file: File): FileKind {
-  if (file.type.startsWith('image/')) return 'image'
-  const extension = file.name.split('.').pop()?.toLowerCase()
-  if (extension && ['xls', 'xlsx', 'csv', 'ods'].includes(extension)) return 'sheet'
-  if (extension === 'pdf') return 'pdf'
-  if (extension && ['doc', 'docx', 'txt', 'md', 'rtf'].includes(extension)) return 'document'
-  return 'other'
-}
-
 function fileKey(file: File) {
   return `${file.name}:${file.size}:${file.lastModified}`
 }
@@ -427,8 +430,17 @@ function openFilePicker() {
 
 // 附件去重，图片单独生成预览地址
 function addFiles(files: File[]) {
-  const existing = new Set(selectedFiles.value.map((item) => fileKey(item.file)))
+  // 先过类型白名单，不合格的只提示、不进附件条
+  const accepted: File[] = []
+  const rejected: string[] = []
   for (const file of files) {
+    if (isAllowedUploadFile(file)) accepted.push(file)
+    else rejected.push(file.name)
+  }
+  if (rejected.length > 0) ElMessage.warning(describeRejectedUploadFiles(rejected))
+
+  const existing = new Set(selectedFiles.value.map((item) => fileKey(item.file)))
+  for (const file of accepted) {
     const key = fileKey(file)
     if (!existing.has(key)) {
       selectedFiles.value.push({
@@ -482,6 +494,16 @@ function removeFile(index: number) {
   const [removed] = selectedFiles.value.splice(index, 1)
   if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl)
 }
+
+// 附件条只占一排，超出用横向拖动滚动，触屏交给原生滑动
+const {
+  scrollRef: filesScrollRef,
+  isDragging: filesDragging,
+  onPointerDown: onFilesPointerDown,
+  onPointerMove: onFilesPointerMove,
+  onPointerUp: onFilesPointerUp,
+  onClickCapture: onFilesClickCapture,
+} = useDragScroll()
 
 const EFFORT_OFF = '关闭'
 // 支持推理但未配档位时的开关值
@@ -676,6 +698,8 @@ onUnmounted(() => {
   for (const item of selectedFiles.value) {
     if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
   }
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
 })
 
 onMounted(() => document.addEventListener('pointerdown', dismissCommandMenuOutside))
@@ -731,9 +755,89 @@ defineExpose({ setDraft, chatOptions })
 /** 输入框随内容增高，超过上限后内部滚动 */
 function autoResize() {
   const el = textareaRef.value
-  if (!el) return
+  // 手动拖高期间不再跟随内容
+  if (!el || manualHeight.value !== null) return
   el.style.height = 'auto'
   el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+}
+
+// 手动拖出的高度，null 表示仍随内容自动伸缩
+const manualHeight = ref<number | null>(null)
+const isResizing = ref(false)
+let resizeStartY = 0
+let resizeStartHeight = 0
+
+// 触屏不会触发 dblclick，用「300ms 内连续两次点按」来识别双击复位
+let lastTapAt = 0
+let tapMoved = false
+// 本次手势的 pointerId，别的指针（如误触的鼠标）不参与拖动判定
+let activePointerId = -1
+
+// 自动高度的最小值，与 .input-textarea 的 min-height 一致
+const MIN_INPUT_HEIGHT = 56
+
+// 手动高度上限取视口一半，再高就把会话区顶没了
+function maxInputHeight(): number {
+  return Math.round(window.innerHeight * 0.5)
+}
+
+const textareaStyle = computed(() =>
+  manualHeight.value === null
+    ? undefined
+    : { height: `${manualHeight.value}px`, maxHeight: 'none' },
+)
+
+// 双击手柄回到随内容伸缩
+function resetInputHeight(): void {
+  manualHeight.value = null
+  void nextTick(autoResize)
+}
+
+function onResizePointerDown(event: PointerEvent): void {
+  const el = textareaRef.value
+  if (!el) return
+  // 触屏没有 dblclick，300ms 内的第二次点按视为双击复位
+  if (event.pointerType !== 'mouse' && Date.now() - lastTapAt < 300) {
+    lastTapAt = 0
+    resetInputHeight()
+    event.preventDefault()
+    return
+  }
+  tapMoved = false
+  activePointerId = event.pointerId
+  const height = Math.round(el.getBoundingClientRect().height)
+  manualHeight.value = height
+  resizeStartY = event.clientY
+  resizeStartHeight = height
+  isResizing.value = true
+  const handle = event.currentTarget
+  if (handle instanceof HTMLElement) handle.setPointerCapture(event.pointerId)
+  // 拖动中指针会滑到 textarea 上，锁住整页光标避免跳成文本箭头
+  document.body.style.cursor = 'row-resize'
+  document.body.style.userSelect = 'none'
+  event.preventDefault()
+}
+
+function onResizePointerMove(event: PointerEvent): void {
+  if (!isResizing.value || event.pointerId !== activePointerId) return
+  if (Math.abs(event.clientY - resizeStartY) > 8) tapMoved = true
+  const delta = resizeStartY - event.clientY
+  const next = Math.min(Math.max(resizeStartHeight + delta, MIN_INPUT_HEIGHT), maxInputHeight())
+  manualHeight.value = next
+}
+
+function onResizePointerUp(event: PointerEvent): void {
+  if (!isResizing.value || event.pointerId !== activePointerId) return
+  isResizing.value = false
+  activePointerId = -1
+  // 没拖动过的点按才算一次 tap，供「快速两下」判定
+  if (event.pointerType !== 'mouse' && !tapMoved) lastTapAt = Date.now()
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+  const target = event.currentTarget
+  if (target instanceof HTMLElement && target.hasPointerCapture(event.pointerId)) {
+    target.releasePointerCapture(event.pointerId)
+  }
 }
 
 // 发出原始 File 后清理输入框和预览地址
@@ -745,7 +849,8 @@ function sendMessage() {
   }
   const content = text.value.trim()
   const files = selectedFiles.value.map((item) => item.file)
-  if (!content && files.length === 0) return
+  // 必须有文字才发，只有附件不算一次提问
+  if (!content) return
   emit('send', { content, files, request: chatOptions.value })
   text.value = ''
   commandMenuDismissed.value = false
@@ -812,6 +917,60 @@ function onTextareaKeydown(event: KeyboardEvent): void {
 .input-card.is-file-dragging {
   border-color: #8fa8d4;
 }
+/* 命中区 112×16，居中压在卡片上边框，上下各露 8px */
+.resize-handle {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 50%;
+  display: flex;
+  width: 112px;
+  height: 16px;
+  cursor: row-resize;
+  touch-action: none;
+  transform: translate(-50%, -50%);
+}
+/* 可见胶囊：平时透明，悬停手柄或输入卡片、聚焦输入框、拖动中淡入 */
+.resize-grip {
+  box-sizing: border-box;
+  width: 96px;
+  height: 6px;
+  margin: auto;
+  border: 1px solid #d6dae1;
+  border-radius: 999px;
+  background: #fff;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    border-color 0.15s,
+    background-color 0.15s;
+}
+.input-card:hover .resize-grip,
+.input-card:focus-within .resize-grip,
+.resize-handle.is-resizing .resize-grip {
+  opacity: 1;
+}
+.resize-handle:hover .resize-grip {
+  opacity: 1;
+  border-color: #b9c0ca;
+}
+.resize-handle.is-resizing .resize-grip {
+  border-color: #8fa8d4;
+  background: #eaf0fa;
+}
+/* 触屏没有悬停态，胶囊常驻显示 */
+@media (hover: none) {
+  .resize-grip {
+    opacity: 1;
+  }
+}
+/* 手指比指针粗，命中区放大到 160×32 */
+@media (pointer: coarse) {
+  .resize-handle {
+    width: 160px;
+    height: 32px;
+  }
+}
 .file-drop-hint {
   position: absolute;
   z-index: 10;
@@ -846,12 +1005,24 @@ function onTextareaKeydown(event: KeyboardEvent): void {
 }
 .selected-files {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: flex-start;
   gap: 8px;
-  max-height: 264px;
-  overflow-y: auto;
   padding: 10px 14px 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  cursor: grab;
+}
+
+.selected-files::-webkit-scrollbar {
+  display: none;
+}
+
+.selected-files.is-dragging {
+  cursor: grabbing;
+  user-select: none;
 }
 .file-chip {
   box-sizing: border-box;
@@ -869,12 +1040,46 @@ function onTextareaKeydown(event: KeyboardEvent): void {
 .file-chip svg {
   flex-shrink: 0;
 }
+/* 可动画的擦除进度，配合 conic 遮罩做顺时针退场 */
+@property --sweep-progress {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
 .file-card-icon {
   position: absolute;
-  top: 34px;
+  top: 21px;
   left: 50%;
-  color: #737a82;
+  width: 52px;
+  height: 52px;
   transform: translateX(-50%);
+  object-fit: contain;
+}
+.file-upload-sweep {
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  background: rgba(32, 34, 37, 0.66);
+  -webkit-mask-image: conic-gradient(
+    from 0deg,
+    transparent var(--sweep-progress),
+    #000 var(--sweep-progress)
+  );
+  mask-image: conic-gradient(
+    from 0deg,
+    transparent var(--sweep-progress),
+    #000 var(--sweep-progress)
+  );
+  pointer-events: none;
+  animation: file-sweep-out 1.4s linear forwards;
+}
+@keyframes file-sweep-out {
+  from {
+    --sweep-progress: 0%;
+  }
+  to {
+    --sweep-progress: 100%;
+  }
 }
 .file-thumbnail {
   position: absolute;
@@ -903,21 +1108,6 @@ function onTextareaKeydown(event: KeyboardEvent): void {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-.file-type-icon.is-sheet {
-  color: #10a452;
-}
-.file-type-icon.is-image {
-  color: #6784b2;
-}
-.file-type-icon.is-pdf {
-  color: #d95555;
-}
-.file-type-icon.is-document {
-  color: #5681c9;
-}
-.file-type-icon.is-other {
-  color: #737a82;
 }
 .file-remove-btn {
   position: absolute;

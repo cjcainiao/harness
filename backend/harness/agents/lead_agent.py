@@ -10,6 +10,7 @@ from langchain.agents.middleware import AgentMiddleware
 from langchain_core.tools import BaseTool
 
 from harness.agents.middlewares.builder import build_agent_middleware
+from harness.agents.prompts.lead_agent import render_lead_agent_prompt
 from harness.config.app_config import AppConfig, get_app_config
 from harness.models.factory import ReasoningEffort, create_chat_model
 from harness.tools.loader import load_default_tools
@@ -17,9 +18,6 @@ from harness.tools.tool_search import build_registry, deferred_tools_section
 
 
 Tool = BaseTool | Callable[..., Any] | dict[str, Any]
-
-DEFAULT_SYSTEM_PROMPT = """你是 Harness 的主代理，负责理解用户目标并选择合适的工具完成任务。
-需要调用工具时先调用工具，完成后根据真实结果回答；无论是否调用工具，最后都要向用户提供清晰的结果。"""
 
 
 # 创建主代理
@@ -52,9 +50,11 @@ def create_lead_agent(
 
     bound_tools.update((tool.name, tool) for tool in tools or ())
 
-    # 提示词追加懒加载工具名单
-    prompt = system_prompt if system_prompt is not None else DEFAULT_SYSTEM_PROMPT
-    prompt += deferred_tools_section()
+    # 渲染系统提示词，自定义内容只替换身份段，规则与懒加载名单始终拼接
+    prompt = render_lead_agent_prompt(
+        role=system_prompt,
+        deferred_tools=deferred_tools_section(),
+    )
 
     # 统一组装模型、工具、中间件和系统提示词
     return create_agent(

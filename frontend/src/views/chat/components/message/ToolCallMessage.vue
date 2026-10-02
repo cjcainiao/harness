@@ -3,6 +3,9 @@
     <summary class="group-header">
       <span class="group-chevron"><ChevronDown :size="12" /></span>
       <span>执行工具 {{ tools.length }} 次</span>
+      <span v-if="timerVisible" class="group-timer" :class="{ 'is-live': isRunning }">
+        {{ timerText }}
+      </span>
     </summary>
 
     <div class="tool-timeline">
@@ -41,6 +44,7 @@
 
 <script setup lang="ts">
 import { ChevronDown, Circle, CircleCheck, CircleX, LoaderCircle } from 'lucide-vue-next'
+import { computed, onUnmounted, ref, watch } from 'vue'
 
 type ToolStatus = 'preparing' | 'running' | 'success' | 'error'
 
@@ -50,10 +54,12 @@ interface ToolMessageItem {
   status: ToolStatus
   arguments?: unknown
   output?: unknown
+  /** 工具开始执行的时间戳，用于前端自己计时 */
+  startedAt?: number
   durationMs?: number
 }
 
-defineProps<{ tools: ToolMessageItem[] }>()
+const props = defineProps<{ tools: ToolMessageItem[] }>()
 
 const statusLabels: Record<ToolStatus, string> = {
   preparing: '准备中',
@@ -61,6 +67,75 @@ const statusLabels: Record<ToolStatus, string> = {
   success: '已完成',
   error: '失败',
 }
+
+// 执行中用本地时钟刷新整组计时
+const nowTick = ref(Date.now())
+let timerId: number | null = null
+
+function isRunningTool(tool: ToolMessageItem): boolean {
+  return tool.status === 'preparing' || tool.status === 'running'
+}
+
+// 清除计时器
+function stopTimer(): void {
+  if (timerId === null) return
+  window.clearInterval(timerId)
+  timerId = null
+}
+
+const isRunning = computed(() => props.tools.some(isRunningTool))
+
+// 整组起点：组内最早开始的工具
+const groupStartedAt = computed(() => {
+  const starts = props.tools
+    .map((tool) => tool.startedAt)
+    .filter((value): value is number => value !== undefined)
+  return starts.length === 0 ? undefined : Math.min(...starts)
+})
+
+// 整组终点：组内最晚结束的工具
+const groupEndedAt = computed(() => {
+  const ends = props.tools
+    .filter((tool) => tool.startedAt !== undefined)
+    .map((tool) => (tool.startedAt as number) + (tool.durationMs ?? 0))
+  return ends.length === 0 ? undefined : Math.max(...ends)
+})
+
+const elapsedMs = computed(() => {
+  const start = groupStartedAt.value
+  if (start === undefined) return 0
+  if (isRunning.value) return Math.max(0, nowTick.value - start)
+  return groupEndedAt.value === undefined ? 0 : Math.max(0, groupEndedAt.value - start)
+})
+
+const timerVisible = computed(
+  () => groupStartedAt.value !== undefined && (isRunning.value || elapsedMs.value > 0),
+)
+
+watch(
+  isRunning,
+  (active) => {
+    stopTimer()
+    if (!active) return
+    nowTick.value = Date.now()
+    timerId = window.setInterval(() => {
+      nowTick.value = Date.now()
+    }, 200)
+  },
+  { immediate: true },
+)
+
+onUnmounted(stopTimer)
+
+// 毫秒级显示，超过一秒换成秒
+function formatDuration(ms: number): string {
+  return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)}s`
+}
+
+const timerText = computed(() => {
+  const value = formatDuration(elapsedMs.value)
+  return isRunning.value ? value : `耗时 ${value}`
+})
 
 function formatValue(value: unknown): string {
   if (value == null) return ''
@@ -174,6 +249,24 @@ function hasDetails(tool: ToolMessageItem): boolean {
   max-width: 38%;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.group-timer {
+  flex: none;
+  color: #628fbd;
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+/* 结束后计时隐藏，鼠标移到标题上才显示 */
+.group-header:hover .group-timer,
+.group-timer.is-live {
+  opacity: 1;
+}
+
+.group-timer.is-live {
+  color: #9aa0a4;
 }
 
 .tool-preview {
