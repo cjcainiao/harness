@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sqlite3
+import uuid
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
@@ -14,9 +16,15 @@ from langgraph.errors import GraphBubbleUp
 from harness.agents.lead_agent import Tool, create_lead_agent
 from harness.core.logger import get_logger
 from harness.models.factory import ReasoningEffort
+from harness.storage import history
+from harness.storage.recorder import TurnRecorder
 
 
 logger = get_logger(__name__)
+
+
+# 触发进度落库的事件类型
+MILESTONE_TYPES = frozenset({"usage", "tool_result", "tool_error"})
 
 
 # 转换JSON默认值
@@ -139,6 +147,15 @@ def _parse_message_events(
     return events
 
 
+# 开启历史轮次，失败时返回 None 表示本轮不入库
+def _start_turn(thread_id: str, question: str) -> str | None:
+    try:
+        return history.start_turn(thread_id, question)
+    except sqlite3.Error as error:
+        logger.warning("历史轮次创建失败", thread_id=thread_id, error=str(error))
+        return None
+
+
 # 执行主代理并返回SSE流
 async def stream_agent(
     message: str,
@@ -151,9 +168,29 @@ async def stream_agent(
     middleware: Sequence[AgentMiddleware] | None = None,
     system_prompt: str | None = None,
 ) -> AsyncIterator[str]:
-    run_config = None
-    if thread_id:
-        run_config = {"configurable": {"thread_id": thread_id}}
+    # 会话标识缺失时由服务端生成，历史才有归属
+    thread_id = thread_id or uuid.uuid4().hex
+    run_config = {"configurable": {"thread_id": thread_id}}
+
+    recorder = TurnRecorder()
+    turn_id = _start_turn(thread_id, message)
+
+    # 覆盖轮次进度或收尾状态，写库失败不打断回复
+    def save(status: str) -> None:
+        if turn_id is None:
+            return
+        try:
+            history.update_turn(turn_id, status, recorder.segments(), recorder.usage())
+        except sqlite3.Error as error:
+            logger.warning("历史写入失败", turn_id=turn_id, error=str(error))
+
+    # 事件先攒段，到关键节点落库，断开时也能保住已有内容
+    def track(event: dict[str, Any]) -> None:
+        recorder.feed(event)
+        if event.get("type") in MILESTONE_TYPES:
+            save(history.TURN_STREAMING)
+
+    final_status = history.TURN_COMPLETED
 
     try:
         agent = create_lead_agent(
@@ -183,6 +220,7 @@ async def stream_agent(
                     metadata,
                     namespace,
                 ):
+                    track(event)
                     yield _encode_sse(event)
 
             elif stream_type == "custom":
@@ -194,12 +232,11 @@ async def stream_agent(
 
                 if namespace:
                     event.setdefault("namespace", list(namespace))
+
+                track(event)
                 yield _encode_sse(event)
 
-        done_event: dict[str, Any] = {"type": "done"}
-        if thread_id:
-            done_event["thread_id"] = thread_id
-        yield _encode_sse(done_event)
+        yield _encode_sse({"type": "done", "thread_id": thread_id})
 
     except asyncio.CancelledError:
         logger.info("客户端已断开流式连接", thread_id=thread_id)
@@ -208,6 +245,7 @@ async def stream_agent(
         # 保留 LangGraph 的中断和恢复语义
         raise
     except Exception as error:
+        final_status = history.TURN_FAILED
         logger.error(
             "主代理流式执行失败",
             thread_id=thread_id,
@@ -221,3 +259,7 @@ async def stream_agent(
                 "message": "服务器内部错误",
             }
         )
+    finally:
+        # 补一次结束事件，定格没有闭合的推理段
+        recorder.feed({"type": "done"})
+        save(final_status)

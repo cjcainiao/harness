@@ -17,6 +17,14 @@
 - 写回用合并语义：只更新请求传来的字段，未传字段保留；原子替换
 - 对外接口返回模型配置不暴露 `api_key`、`base_url`
 
+## 历史库
+- SQLite 文件路径取自 `system.db_path`（默认 `data/harness.db`），`journal_mode = WAL`，外键靠每条连接 `PRAGMA foreign_keys = ON` 开启
+- DDL 唯一事实源在 `harness/storage/schema.py`，语句全部幂等，启动时在 lifespan 整段执行一遍 `SCHEMA_SCRIPT`
+- 不记版本号、不做迁移链（不用 `user_version`）；给已存在的表改列要自己补 DDL 或删库重建
+- 建表失败直接抛出让启动失败，不静默降级成"没有历史功能"
+- 写历史走同步短事务（`connect_history_db`），写失败只 `logger.warning` 不打断回复
+- 读接口翻页一律 keyset 游标，不用 OFFSET 深度分页：会话按 `(created_at, id)`，轮次按 `seq`，游标参数只给一半返回 400
+
 ## 工具规范
 - 工具用 `@tool("名称", args_schema=XxxArgs)` 装饰，参数类与工具同文件，类上 `ConfigDict(extra="forbid")`
 - docstring 是模型唯一能看到的说明，按段写全：功能一句话、何时使用、`Args:`、`Returns:`

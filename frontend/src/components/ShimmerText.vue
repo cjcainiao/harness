@@ -1,0 +1,49 @@
+<template>
+  <span class="shimmer-text" :class="{ 'is-plain': !active }"><slot /></span>
+</template>
+
+<script setup lang="ts">
+// 进行中文案的扫光，非进行中不着色不动
+withDefaults(defineProps<{ active?: boolean }>(), { active: true })
+</script>
+
+<style scoped>
+.shimmer-text {
+  background-image: linear-gradient(
+    110deg,
+    var(--shimmer-base, #6d757e) 35%,
+    var(--shimmer-highlight, #eaeef2) 50%,
+    var(--shimmer-base, #6d757e) 75%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: text-shimmer 4s linear infinite;
+}
+
+/* 结束后回到普通文字 */
+.shimmer-text.is-plain {
+  background: none;
+  color: inherit;
+  animation: none;
+}
+
+@keyframes text-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer-text {
+    background: none;
+    color: inherit;
+    animation: none;
+  }
+}
+</style>

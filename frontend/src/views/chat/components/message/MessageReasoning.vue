@@ -2,7 +2,7 @@
   <details class="reasoning" :open="open" @toggle="onToggle">
     <summary class="reasoning-header">
       <span class="reasoning-chevron"><ChevronDown :size="12" /></span>
-      <span>思考过程</span>
+      <ShimmerText :active="streaming">思考过程</ShimmerText>
       <span v-if="timerVisible" class="reasoning-timer" :class="{ 'is-live': streaming }">
         {{ timerText }}
       </span>
@@ -15,6 +15,7 @@
 <script setup lang="ts">
 import { ChevronDown } from 'lucide-vue-next'
 import { computed, onUnmounted, ref, watch } from 'vue'
+import ShimmerText from '@/components/ShimmerText.vue'
 
 const props = defineProps<{
   content: string
@@ -59,7 +60,8 @@ const elapsedMs = computed(() => {
   if (!props.streaming) return props.durationMs ?? 0
   return props.startedAt === undefined ? 0 : Math.max(0, nowTick.value - props.startedAt)
 })
-const timerVisible = computed(() => props.streaming || (props.durationMs ?? 0) > 0)
+// 有耗时记录就显示，0 ms 也要显示
+const timerVisible = computed(() => props.streaming || props.durationMs !== undefined)
 const timerText = computed(() => {
   const seconds = (elapsedMs.value / 1000).toFixed(1)
   return props.streaming ? `${seconds}s` : `耗时 ${seconds}s`
@@ -78,7 +80,8 @@ function onToggle(event: Event): void {
 .reasoning {
   min-width: 0;
   color: #757b80;
-  font-size: 13px;
+  --shimmer-base: #757b80;
+  font-size: 14px;
   line-height: 1.6;
 }
 

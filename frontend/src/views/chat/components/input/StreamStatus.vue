@@ -1,14 +1,15 @@
 <template>
   <div class="stream-status" :class="{ 'is-active': active }" role="status">
     <DotsMatrix />
-    <span class="status-text">{{ text }}</span>
+    <ShimmerText class="status-text" :active="active">{{ text }}</ShimmerText>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import DotsMatrix from '@/components/DotsMatrix.vue'
-import type { StreamPhase } from '../message/messageTurn'
+import ShimmerText from '@/components/ShimmerText.vue'
+import type { StreamPhase } from '@/views/chat/components/message/messageTurn'
 
 const props = defineProps<{ active: boolean; phase: StreamPhase }>()
 
@@ -32,9 +33,10 @@ const text = computed(() => statusTexts[props.phase])
   margin: 0 auto;
   padding: 0 17px 24px 24px;
   color: #6d757e;
-  font-size: 12px;
+  --shimmer-base: #6d757e;
+  font-size: 14px;
   font-weight: 500;
-  line-height: 16px;
+  line-height: 20px;
   /* 常驻占位，避免输入卡随回复开始和结束上下跳 */
   visibility: hidden;
 }

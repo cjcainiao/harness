@@ -1,7 +1,7 @@
 # 系统配置接口
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.result import Result
 from harness.config.app_config import AppConfig, get_app_config
@@ -14,6 +14,8 @@ router = APIRouter(prefix="/config", tags=["系统配置"])
 
 # 模型信息（不暴露密钥）
 class ModelInfo(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(description="模型名称")
     display_name: str = Field(description="模型显示名称")
     description: str | None = Field(default=None, description="模型描述")

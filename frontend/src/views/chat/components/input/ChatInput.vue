@@ -51,39 +51,15 @@
         @pointercancel="onFilesPointerUp"
         @click.capture="onFilesClickCapture"
       >
-        <div
+        <AttachmentCard
           v-for="(item, index) in selectedFiles"
           :key="fileKey(item.file)"
-          class="file-chip"
-          role="listitem"
-        >
-          <img
-            v-if="item.previewUrl"
-            class="file-thumbnail"
-            :src="item.previewUrl"
-            :alt="`${item.file.name} 的缩略图`"
-          />
-          <!-- 非图片文件用按扩展名匹配的图标素材 -->
-          <img
-            v-else
-            class="file-card-icon"
-            :src="resolveFileIconUrl(item.file.name)"
-            :alt="`${item.file.name} 的类型图标`"
-          />
-          <div class="file-chip-name">
-            <span>{{ item.file.name }}</span>
-          </div>
-          <!-- 上传中遮罩：灰黑铺满卡片，顺时针擦除 -->
-          <span class="file-upload-sweep" aria-hidden="true" />
-          <button
-            class="file-remove-btn"
-            type="button"
-            :aria-label="`移除文件 ${item.file.name}`"
-            @click="removeFile(index)"
-          >
-            <X :size="14" aria-hidden="true" />
-          </button>
-        </div>
+          :name="item.file.name"
+          :preview-url="item.previewUrl"
+          removable
+          sweep
+          @remove="removeFile(index)"
+        />
       </div>
       <!-- 输入区 -->
       <textarea
@@ -345,7 +321,6 @@ import {
   ShieldCheck,
   Square,
   TriangleAlert,
-  X,
 } from 'lucide-vue-next'
 import { ElMessage, ElPopover, ElTooltip } from 'element-plus'
 import 'element-plus/es/components/message/style/css'
@@ -355,8 +330,8 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { ChatSendRequest } from '@/api/chat'
 import { fetchModels, type ModelInfo } from '@/api/config'
 import { useDragScroll } from '@/utils/dragScrollUtil'
-import { resolveFileIconUrl } from '@/utils/fileIconUtil'
 import { describeRejectedUploadFiles, isAllowedUploadFile } from '@/utils/fileUploadUtil'
+import AttachmentCard from '@/views/chat/components/attachment/AttachmentCard.vue'
 import EnergyField from './EnergyField.vue'
 import SlashCommandMenu from './SlashCommandMenu.vue'
 
@@ -1024,124 +999,6 @@ function onTextareaKeydown(event: KeyboardEvent): void {
   cursor: grabbing;
   user-select: none;
 }
-.file-chip {
-  box-sizing: border-box;
-  position: relative;
-  flex: 0 0 160px;
-  width: 160px;
-  height: 120px;
-  max-width: 100%;
-  border: 1px solid #d6d9de;
-  border-radius: 9px;
-  background: #f5f6f8;
-  color: #454a50;
-  font-size: 12px;
-}
-.file-chip svg {
-  flex-shrink: 0;
-}
-/* 可动画的擦除进度，配合 conic 遮罩做顺时针退场 */
-@property --sweep-progress {
-  syntax: '<percentage>';
-  inherits: false;
-  initial-value: 0%;
-}
-.file-card-icon {
-  position: absolute;
-  top: 21px;
-  left: 50%;
-  width: 52px;
-  height: 52px;
-  transform: translateX(-50%);
-  object-fit: contain;
-}
-.file-upload-sweep {
-  position: absolute;
-  inset: 0;
-  border-radius: 8px;
-  background: rgba(32, 34, 37, 0.66);
-  -webkit-mask-image: conic-gradient(
-    from 0deg,
-    transparent var(--sweep-progress),
-    #000 var(--sweep-progress)
-  );
-  mask-image: conic-gradient(
-    from 0deg,
-    transparent var(--sweep-progress),
-    #000 var(--sweep-progress)
-  );
-  pointer-events: none;
-  animation: file-sweep-out 1.4s linear forwards;
-}
-@keyframes file-sweep-out {
-  from {
-    --sweep-progress: 0%;
-  }
-  to {
-    --sweep-progress: 100%;
-  }
-}
-.file-thumbnail {
-  position: absolute;
-  top: 0;
-  left: 0;
-  display: block;
-  width: 100%;
-  height: calc(100% - 26px);
-  border-radius: 8px 8px 0 0;
-  background: #e9ebef;
-  object-fit: cover;
-}
-.file-chip-name {
-  position: absolute;
-  right: 8px;
-  bottom: 6px;
-  left: 8px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  line-height: 16px;
-}
-.file-chip-name span {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.file-remove-btn {
-  position: absolute;
-  top: -9px;
-  right: -8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: #fff;
-  cursor: pointer;
-  transition: opacity 0.15s ease;
-}
-.file-remove-btn::before {
-  position: absolute;
-  inset: 5px;
-  border-radius: 50%;
-  background: rgba(20, 24, 30, 0.78);
-  content: '';
-}
-.file-remove-btn svg {
-  position: relative;
-  width: 11px;
-  height: 11px;
-}
-.file-remove-btn:focus-visible {
-  outline: 2px solid #a5b6da;
-  outline-offset: 1px;
-}
 .input-toolbar {
   display: flex;
   align-items: center;
@@ -1504,18 +1361,6 @@ function onTextareaKeydown(event: KeyboardEvent): void {
   .permission-option:hover {
     background: #f3f4f6;
   }
-  .file-chip .file-remove-btn {
-    opacity: 0;
-    pointer-events: none;
-  }
-  .file-chip:hover .file-remove-btn,
-  .file-chip .file-remove-btn:focus-visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  .file-remove-btn:hover::before {
-    background: #111;
-  }
   .tool-btn:hover {
     background: #f3f4f6;
   }
@@ -1536,10 +1381,6 @@ function onTextareaKeydown(event: KeyboardEvent): void {
   }
   .permission-option {
     min-height: 48px;
-  }
-  .file-chip .file-remove-btn {
-    opacity: 1;
-    pointer-events: auto;
   }
   .tool-btn {
     min-height: 36px;
@@ -1562,9 +1403,6 @@ function onTextareaKeydown(event: KeyboardEvent): void {
 .tool-btn:active,
 .menu-option:active {
   background: #e9ecf1;
-}
-.file-remove-btn:active::before {
-  background: #111;
 }
 .effort-label:active {
   color: #303133;

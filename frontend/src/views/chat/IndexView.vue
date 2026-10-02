@@ -56,6 +56,7 @@ import type { Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { ChatSendRequest } from '@/api/chat'
 import { useChatSessionsStore } from '@/stores/chatSessions'
+import { setPageTitle } from '@/utils/pageTitleUtil'
 import ChatDrawer from './components/drawer/ChatDrawer.vue'
 import ChatInput from './components/input/ChatInput.vue'
 import StreamStatus from './components/input/StreamStatus.vue'
@@ -72,6 +73,7 @@ const router = useRouter()
 const chatSessions = useChatSessionsStore()
 // 新对话没有路由 ID 时保留稳定的临时 ID
 const newThreadId = crypto.randomUUID()
+chatSessions.markHistoryLoaded(newThreadId)
 const threadId = computed(() => {
   const id = route.query.thread_id
   return typeof id === 'string' && id.trim() ? id : newThreadId
@@ -83,6 +85,8 @@ const streamPhase = ref<StreamPhase>('idle')
 const sessionTitle = computed(
   () => chatSessions.sessions.find((session) => session.id === threadId.value)?.title ?? '新对话',
 )
+// 会话标题变化同步到浏览器标签
+watch(sessionTitle, (title) => setPageTitle(title), { immediate: true })
 // 按当前 thread 汇总累计 Token 用量
 const sessionUsage = computed(() => chatSessions.getUsage(threadId.value))
 
@@ -101,7 +105,7 @@ function closeDrawer(): void {
   drawerPage.value = null
 }
 
-// 抽屉开合方法交子组件直接调用
+// 抽屉开合方法
 provide('chat-drawer-open', openDrawer)
 
 watch(

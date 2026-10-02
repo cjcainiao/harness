@@ -7,9 +7,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.exceptions import register_exception_handlers
-from app.gateway import chat_router, config_router
+from app.gateway import chat_router, config_router, history_router
 from harness.config.app_config import get_app_config
 from harness.core.logger import get_logger, shutdown_logging
+from harness.storage.db import init_history_db
 
 
 logger = get_logger(__name__)
@@ -21,6 +22,9 @@ async def lifespan(app: FastAPI):
     config = get_app_config()
     logger.info("应用启动中", app_name=config.system.app_name, env=config.system.env)
     try:
+        # 表结构已是最新时只做一次存在性检查
+        db_path = await init_history_db()
+        logger.info("历史库已就绪", path=str(db_path))
         yield
     finally:
         logger.info("应用关闭中", app_name=config.system.app_name)
@@ -49,6 +53,7 @@ def create_app() -> FastAPI:
     # 注册接口路由
     application.include_router(chat_router, prefix=api_prefix)
     application.include_router(config_router, prefix=api_prefix)
+    application.include_router(history_router, prefix=api_prefix)
 
     # CORS 配置，解决跨域问题
     application.add_middleware(

@@ -193,6 +193,8 @@ watch(settingsVisible, (visible) => {
 let buttonObserver: ResizeObserver | undefined
 
 onMounted(() => {
+  // 打开侧栏时同步服务端会话
+  void chatSessions.loadThreads()
   window.addEventListener('resize', onViewportResize)
   if (settingsButtonRef.value) {
     buttonObserver = new ResizeObserver(() => updateSettingsPopperWidth())
@@ -322,6 +324,17 @@ function startNewConversation(): void {
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  /* 滚动条先占位不上色，悬停才显形，显隐切换不会挤动列表 */
+  scrollbar-color: transparent transparent;
+}
+.sidebar-history::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+.sidebar-history:hover {
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+.sidebar-history:hover::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
 }
 .sidebar-user {
   display: flex;

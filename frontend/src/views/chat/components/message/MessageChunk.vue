@@ -9,11 +9,11 @@ import MarkdownIt from 'markdown-it'
 import type { RendererRule } from 'markdown-it'
 import { computed, inject, ref } from 'vue'
 import type { Component } from 'vue'
-import CodeRunView from '../../pages/CodeRunView.vue'
+import CodeRunView from '@/views/chat/pages/CodeRunView.vue'
 
 const props = defineProps<{ content: string }>()
 
-// IndexView 提供的抽屉打开方法
+// 打开抽屉的方法
 type OpenDrawer = (page: Component, title: string, pageProps?: Record<string, unknown>) => void
 const openDrawer = inject<OpenDrawer | null>('chat-drawer-open', null)
 

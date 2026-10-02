@@ -2,7 +2,7 @@
   <details class="tool-group" open>
     <summary class="group-header">
       <span class="group-chevron"><ChevronDown :size="12" /></span>
-      <span>执行工具 {{ tools.length }} 次</span>
+      <ShimmerText :active="isRunning">执行工具 {{ tools.length }} 次</ShimmerText>
       <span v-if="timerVisible" class="group-timer" :class="{ 'is-live': isRunning }">
         {{ timerText }}
       </span>
@@ -20,7 +20,9 @@
           />
           <Circle v-else class="status-icon preparing" :size="13" />
           <span class="tool-name">{{ tool.tool || '工具调用' }}</span>
-          <span class="tool-state">{{ statusLabels[tool.status] }}</span>
+          <ShimmerText class="tool-state" :active="isRunningTool(tool)">
+            {{ statusLabels[tool.status] }}
+          </ShimmerText>
           <span v-if="preview(tool)" class="tool-preview">· {{ preview(tool) }}</span>
         </summary>
 
@@ -45,6 +47,7 @@
 <script setup lang="ts">
 import { ChevronDown, Circle, CircleCheck, CircleX, LoaderCircle } from 'lucide-vue-next'
 import { computed, onUnmounted, ref, watch } from 'vue'
+import ShimmerText from '@/components/ShimmerText.vue'
 
 type ToolStatus = 'preparing' | 'running' | 'success' | 'error'
 
@@ -101,15 +104,22 @@ const groupEndedAt = computed(() => {
   return ends.length === 0 ? undefined : Math.max(...ends)
 })
 
+// 历史还原没有起点时间戳，只能累加单次工具耗时
+const restoredMs = computed(() =>
+  props.tools.reduce((total, tool) => total + (tool.durationMs ?? 0), 0),
+)
+
 const elapsedMs = computed(() => {
   const start = groupStartedAt.value
-  if (start === undefined) return 0
+  if (start === undefined) return restoredMs.value
   if (isRunning.value) return Math.max(0, nowTick.value - start)
   return groupEndedAt.value === undefined ? 0 : Math.max(0, groupEndedAt.value - start)
 })
 
+// 有起点时间戳或有耗时记录就显示，0 ms 也要显示
 const timerVisible = computed(
-  () => groupStartedAt.value !== undefined && (isRunning.value || elapsedMs.value > 0),
+  () =>
+    groupStartedAt.value !== undefined || props.tools.some((tool) => tool.durationMs !== undefined),
 )
 
 watch(
@@ -160,7 +170,8 @@ function hasDetails(tool: ToolMessageItem): boolean {
 .tool-group {
   min-width: 0;
   color: #8b8b8b;
-  font-size: 13px;
+  --shimmer-base: #8b8b8b;
+  font-size: 14px;
   line-height: 1.5;
 }
 

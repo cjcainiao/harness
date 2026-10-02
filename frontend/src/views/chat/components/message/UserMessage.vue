@@ -12,31 +12,13 @@
       @pointerup="onAttachmentsPointerUp"
       @pointercancel="onAttachmentsPointerUp"
     >
-      <div
+      <AttachmentCard
         v-for="attachment in attachments"
         :key="attachment.id"
-        class="attachment-card"
-        role="listitem"
-        :title="attachment.name"
-      >
-        <img
-          v-if="attachment.type.startsWith('image/') && attachment.previewUrl"
-          class="attachment-preview"
-          :src="attachment.previewUrl"
-          alt=""
-        />
-        <!-- 非图片附件用按扩展名匹配的图标素材 -->
-        <img
-          v-else
-          class="attachment-icon"
-          :src="resolveFileIconUrl(attachment.name)"
-          :alt="`${attachment.name} 的类型图标`"
-        />
-        <div class="attachment-details">
-          <span class="attachment-name">{{ attachment.name }}</span>
-          <span class="attachment-size">{{ formatSize(attachment.size) }}</span>
-        </div>
-      </div>
+        :name="attachment.name"
+        :preview-url="attachment.previewUrl"
+        :size="attachment.size"
+      />
     </div>
     <div v-if="content" class="message-text">{{ content }}</div>
     <div class="message-actions">
@@ -91,7 +73,7 @@ import { computed, onUnmounted, ref } from 'vue'
 import { Check, Copy, Pencil } from 'lucide-vue-next'
 import type { ChatAttachment } from './messageTurn'
 import { useDragScroll } from '@/utils/dragScrollUtil'
-import { resolveFileIconUrl } from '@/utils/fileIconUtil'
+import AttachmentCard from '@/views/chat/components/attachment/AttachmentCard.vue'
 
 // 附件条只占一排，超出用横向拖动滚动，触屏交给原生滑动
 const {
@@ -138,12 +120,6 @@ async function copyMessage(): Promise<void> {
 }
 
 onUnmounted(() => window.clearTimeout(copiedTimer))
-
-function formatSize(size: number): string {
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`
-}
 </script>
 
 <style scoped>
@@ -224,46 +200,6 @@ function formatSize(size: number): string {
 .attachment-list.is-dragging {
   cursor: grabbing;
   user-select: none;
-}
-.attachment-card {
-  flex: 0 0 150px;
-  overflow: hidden;
-  border: 1px solid #e1e3e6;
-  border-radius: 9px;
-  background: #fff;
-}
-.attachment-preview,
-.attachment-icon {
-  display: block;
-  width: 100%;
-  height: 88px;
-}
-.attachment-preview {
-  object-fit: cover;
-}
-.attachment-icon {
-  box-sizing: border-box;
-  object-fit: contain;
-  padding: 18px 0;
-  background: #f8f9fa;
-}
-.attachment-details {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 7px;
-  font-size: 11px;
-}
-.attachment-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.attachment-size {
-  flex: none;
-  margin-left: auto;
-  color: #9299a1;
 }
 @media (hover: none) {
   .message-actions {

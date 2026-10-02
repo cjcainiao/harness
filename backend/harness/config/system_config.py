@@ -26,3 +26,4 @@ class systemConfig(BaseModel):
     log_max_bytes: int = Field(default=10 * 1024 * 1024, ge=0, description="单个日志文件上限（字节），0 表示不滚动")
     log_backup_count: int = Field(default=7, ge=0, description="滚动保留的历史文件数，0 表示只保留当前文件")
     log_console: bool | None = Field(default=None, description="是否输出到控制台，留空则按 env 自动（prod 关闭）")
+    db_path: str = Field(default="data/harness.db", min_length=1, description="历史库文件路径，相对路径按后端项目根解析")

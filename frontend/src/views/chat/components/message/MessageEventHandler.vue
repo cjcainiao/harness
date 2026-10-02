@@ -1,7 +1,9 @@
 <template>
   <div class="message-event-handler">
-    <div ref="scrollContainer" class="message-scroll">
+    <div ref="scrollContainer" class="message-scroll" @scroll="onScroll">
       <div class="message-list">
+        <p v-if="earlierLoading" class="list-tip">加载中…</p>
+        <p v-else-if="earlierEnded && displayTurns.length" class="list-tip">没有更早的消息了</p>
         <section
           v-for="turn in displayTurns"
           :key="turn.id"
@@ -187,6 +189,10 @@ const locatorItems = computed(() =>
   })),
 )
 
+// 顶部翻页提示用当前会话的翻页状态
+const earlierLoading = computed(() => chatSessions.isTurnsLoading(props.threadId))
+const earlierEnded = computed(() => chatSessions.isTurnsEnded(props.threadId))
+
 // 反馈仅记录在当前 turn，切换会话时仍可恢复
 function setFeedback(turnId: string, feedback: TurnFeedback | undefined): void {
   const turn = turns.value.find((item) => item.id === turnId)
@@ -235,6 +241,7 @@ function createRuntime(items: TurnItem[] = []): TurnRuntime {
 
 // 切换窗口或加载历史时，替换当前窗口的所有 turn
 function loadTurns(history: ChatTurn[]): void {
+  const known = new Map(turns.value.map((turn) => [turn.id, turn.locatorId]))
   turns.value = history
     .filter((turn) => turn.threadId === props.threadId)
     .map((turn) => ({
@@ -243,12 +250,87 @@ function loadTurns(history: ChatTurn[]): void {
       items: turn.items.map((item) => ({ ...item })),
       usage: turn.usage && { ...turn.usage },
       followUpQuestions: turn.followUpQuestions?.slice(),
-      locatorId: nextLocatorId++,
+      // 同一轮次沿用原定位号，往上翻页时不重建整个列表
+      locatorId: known.get(turn.id) ?? nextLocatorId++,
     }))
-  runtimes.clear()
-  for (const turn of turns.value) runtimes.set(turn.id, createRuntime(turn.items))
+  // 保留原有运行时，正在流式的轮次不受影响
+  const visible = new Set(turns.value.map((turn) => turn.id))
+  for (const id of runtimes.keys()) if (!visible.has(id)) runtimes.delete(id)
+  for (const turn of turns.value) {
+    if (!runtimes.has(turn.id)) runtimes.set(turn.id, createRuntime(turn.items))
+  }
   notifyResponding()
 }
+
+// 停在最新一条，往上滑再翻更早的轮次
+function scrollToBottom(): void {
+  void nextTick(() => {
+    const container = scrollContainer.value
+    if (container) container.scrollTop = container.scrollHeight
+  })
+}
+
+// 切换窗口前保存当前 turn，再按缓存优先加载目标历史
+async function switchThread(nextId: string, previousId?: string): Promise<void> {
+  if (previousId) {
+    // 先清掉上一个会话的回复状态
+    chatSessions.setResponding(previousId, false)
+    stopChatTurns()
+    chatSessions.saveTurns(previousId, turns.value)
+  }
+
+  // 本地已有历史直接渲染，不经过加载态
+  if (chatSessions.isHistoryLoaded(nextId)) {
+    loadTurns(chatSessions.getTurns(nextId))
+    scrollToBottom()
+    return
+  }
+
+  // 拉取期间先清空，避免显示上一个会话的内容
+  loadTurns([])
+  let history: ChatTurn[] = []
+  try {
+    history = await chatSessions.loadHistory(nextId)
+  } catch {
+    // 拉取失败按空历史显示，切回来时重试
+    return
+  }
+  // 已经切走，丢弃这次结果
+  if (props.threadId !== nextId) return
+  // 拉取期间本地已提问的轮次接在历史后面
+  const pending = turns.value.filter((turn) => !history.some((item) => item.id === turn.id))
+  loadTurns([...history, ...pending])
+  scrollToBottom()
+}
+
+// 距顶部多少像素内算滑到了顶
+const TOP_EDGE_PX = 60
+
+// 滑到接近顶部时往前翻一页更早的轮次
+async function onScroll(): Promise<void> {
+  const container = scrollContainer.value
+  if (!container || container.scrollTop > TOP_EDGE_PX) return
+
+  const threadId = props.threadId
+  if (chatSessions.isTurnsLoading(threadId) || chatSessions.isTurnsEnded(threadId)) return
+
+  const previousHeight = container.scrollHeight
+  const previousTop = container.scrollTop
+  const older = await chatSessions.loadMoreHistory(threadId)
+  // 已经切走或没有新内容，位置不用调整
+  if (props.threadId !== threadId || !older.length) return
+
+  loadTurns([...older, ...turns.value])
+  // 补回新增高度，视线仍停在原来的那条
+  await nextTick()
+  container.scrollTop = previousTop + container.scrollHeight - previousHeight
+}
+
+watch(
+  () => props.threadId,
+  (nextId, previousId) => void switchThread(nextId, previousId),
+  { immediate: true },
+)
 
 // 每次发送问题先创建一个 turn，后续事件只写入这个 turn
 function startTurn(question: string, options: { id?: string; files?: File[] } = {}): string {
@@ -276,10 +358,7 @@ function startTurn(question: string, options: { id?: string; files?: File[] } = 
   })
   runtimes.set(turnId, createRuntime())
   notifyResponding()
-  void nextTick(() => {
-    const container = scrollContainer.value
-    if (container) container.scrollTop = container.scrollHeight
-  })
+  scrollToBottom()
   return turnId
 }
 
@@ -294,21 +373,6 @@ function setFollowUpQuestions(turnId: string, questions: string[]): boolean {
   if (turn.status !== 'streaming') chatSessions.saveTurns(turn.threadId, turns.value)
   return true
 }
-
-// 切换 thread 前保存当前 turn，再加载目标历史
-watch(
-  () => props.threadId,
-  (nextId, previousId) => {
-    if (previousId) {
-      // 先清掉上一个会话的回复状态
-      chatSessions.setResponding(previousId, false)
-      stopChatTurns()
-      chatSessions.saveTurns(previousId, turns.value)
-    }
-    loadTurns(chatSessions.getTurns(nextId))
-  },
-  { immediate: true },
-)
 
 function isMessageEvent(value: unknown): value is MessageEvent {
   return (
@@ -481,7 +545,7 @@ function handleUsage(turn: TurnState, runtime: TurnRuntime, event: MessageEvent)
   if (input === null && output === null && total === null && cacheRead === null) return
 
   const previous: TurnUsage = turn.usage ?? { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
-  turn.usage = {
+  const next: TurnUsage = {
     inputTokens: previous.inputTokens + (input ?? 0),
     outputTokens: previous.outputTokens + (output ?? 0),
     totalTokens: previous.totalTokens + (total ?? (input ?? 0) + (output ?? 0)),
@@ -490,6 +554,13 @@ function handleUsage(turn: TurnState, runtime: TurnRuntime, event: MessageEvent)
         ? undefined
         : (previous.cacheReadTokens ?? 0) + (cacheRead ?? 0),
   }
+  turn.usage = next
+  // 会话总量只累加本次新增，翻页加载过的轮次不重复计
+  chatSessions.addSessionTokens(
+    turn.threadId,
+    next.inputTokens - previous.inputTokens,
+    next.outputTokens - previous.outputTokens,
+  )
   chatSessions.saveTurns(turn.threadId, turns.value)
 }
 // 结束状态写回历史，避免重开窗口后持续显示加载中
@@ -637,6 +708,8 @@ onUnmounted(() => {
   height: 100%;
   overflow-y: auto;
   scrollbar-width: none;
+  /* 往上翻页时手动补滚动位置，别让浏览器锚定重复调整 */
+  overflow-anchor: none;
 }
 .message-scroll::-webkit-scrollbar {
   display: none;
@@ -648,6 +721,12 @@ onUnmounted(() => {
   max-width: 980px;
   margin: 0 auto;
   padding: 24px 16px 24px 36px;
+}
+.list-tip {
+  margin: 0;
+  color: #a8adb3;
+  font-size: 12px;
+  text-align: center;
 }
 .chat-turn {
   display: flex;

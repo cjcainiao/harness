@@ -26,6 +26,14 @@
 - 流式对话走 `utils/sseUtil`，不经过 axios 封装
 - 接口路径以后端 `app/gateway/` 实际路由为准
 
+## 长列表翻页
+- 一次固定条数，游标取本页最早那条服务端返回的原始值（时间串或序号），不用本地时间戳反推
+- 触发不能只挂 `@scroll`：内容不足一屏没有滚动条时也要补页，按 `scrollHeight - scrollTop - clientHeight` 判底，列表长度变化和窗口 resize 都重新判断
+- 自动补页要有停止条件：不再触底、已到底、或一页没拿到新数据
+- 顶部 prepend 更早内容后手动补 `scrollTop` 增量，滚动容器加 `overflow-anchor: none`
+- 还原历史后停在最新一条，否则既看不到结尾也滑不出更早分页
+- 翻页状态提示复用同一句式：加载中… / 没有更早的…
+
 ## 组件写法
 - 一律 `<script setup lang="ts">` 三段式 SFC，`<style scoped>`
 - 页面组件命名 `XxxView.vue`（PascalCase），普通组件 PascalCase
