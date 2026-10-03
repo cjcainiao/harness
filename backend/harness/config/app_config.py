@@ -8,6 +8,7 @@ from typing import Any, Self
 from ruamel.yaml import YAML
 from pydantic import Field
 
+from harness.config.memory_config import memoryConfig
 from harness.config.model_config import ModelConfig
 from harness.config.system_config import systemConfig
 from harness.config.tool_config import ToolConfig
@@ -21,6 +22,7 @@ _yaml_safe = YAML(typ="safe")
 # 全局配置类
 class AppConfig(ToolConfig):
     system: systemConfig = Field(default_factory=systemConfig, description="系统配置")
+    memory: memoryConfig = Field(default_factory=memoryConfig, description="记忆配置")
     models: list[ModelConfig] = Field(default_factory=list, description="模型配置")
 
     # 解析配置文件路径，优先级：参数 > 环境变量 > 默认路径
@@ -54,11 +56,9 @@ class AppConfig(ToolConfig):
         with open(resolved_path, encoding="utf-8") as f:
             config_data = _yaml_safe.load(f) or {}
 
-        # 先校验配置版本，再解析环境变量，最后交给 pydantic 校验
         cls._check_config_version(config_data, resolved_path)
         config_data = cls.resolve_env_variables(config_data)
 
-        # 直接映射到字段上
         return cls.model_validate(config_data)
 
     # 校验配置版本，低于 config.example.yaml 时告警
@@ -125,7 +125,7 @@ _app_config_mtime: float | None = None
 _app_config_is_custom = False
 
 
-# 取配置文件修改时间，取不到返回 None
+# 取配置文件修改时间
 def _get_config_mtime(config_path: Path) -> float | None:
     try:
         return config_path.stat().st_mtime
@@ -145,7 +145,7 @@ def _load_and_cache_app_config(config_path: str | None = None) -> AppConfig:
     return _app_config
 
 
-# 获取配置，返回缓存单例，路径或修改时间变化时自动重载
+# 获取配置，路径或修改时间变化时自动重载
 def get_app_config() -> AppConfig:
     global _app_config, _app_config_path, _app_config_mtime
 

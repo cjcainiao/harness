@@ -8,6 +8,7 @@ from typing import Any
 from langchain.agents import create_agent
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.tools import BaseTool
+from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from harness.agents.middlewares.builder import build_agent_middleware
 from harness.agents.prompts.lead_agent import render_lead_agent_prompt
@@ -30,6 +31,7 @@ def create_lead_agent(
     tools: Sequence[Tool] | None = None,
     middleware: Sequence[AgentMiddleware] | None = None,
     system_prompt: str | None = None,
+    checkpointer: BaseCheckpointSaver | None = None,
 ):
     config = app_config or get_app_config()
 
@@ -56,12 +58,13 @@ def create_lead_agent(
         deferred_tools=deferred_tools_section(),
     )
 
-    # 统一组装模型、工具、中间件和系统提示词
+    # 统一组装模型、工具、中间件、系统提示词与检查点
     return create_agent(
         model=model,
         tools=list(bound_tools.values()),
         middleware=build_agent_middleware(middleware),
         system_prompt=prompt,
+        checkpointer=checkpointer,
         debug=config.system.debug,
         name="lead-agent",
     )

@@ -10,6 +10,8 @@ from app.exceptions import register_exception_handlers
 from app.gateway import chat_router, config_router, history_router
 from harness.config.app_config import get_app_config
 from harness.core.logger import get_logger, shutdown_logging
+from harness.runtime.checkpointer import init_checkpointer, shutdown_checkpointer
+from harness.runtime.db_path import resolve_db_path
 from harness.storage.db import init_history_db
 
 
@@ -25,9 +27,21 @@ async def lifespan(app: FastAPI):
         # 表结构已是最新时只做一次存在性检查
         db_path = await init_history_db()
         logger.info("历史库已就绪", path=str(db_path))
+
+        # 检查点写磁盘文件，进程重启后同一会话仍能延续
+        checkpointer = await init_checkpointer()
+        if checkpointer is None:
+            logger.info("检查点记忆已关闭")
+        else:
+            logger.info(
+                "检查点库已就绪",
+                path=str(resolve_db_path(config.memory.db_path)),
+                durability=config.memory.durability,
+            )
         yield
     finally:
         logger.info("应用关闭中", app_name=config.system.app_name)
+        await shutdown_checkpointer()
         shutdown_logging()
 
 

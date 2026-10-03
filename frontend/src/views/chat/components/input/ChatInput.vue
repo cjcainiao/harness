@@ -229,7 +229,7 @@
                       {{ effort }}
                     </button>
                   </div>
-                  <div class="effort-track">
+                  <div class="effort-track" :class="{ 'is-dragging': dragging }">
                     <div class="effort-track-dots" aria-hidden="true">
                       <i v-for="effort in reasoningOptions" :key="effort" />
                     </div>
@@ -1187,6 +1187,8 @@ function onTextareaKeydown(event: KeyboardEvent): void {
   box-sizing: border-box;
   position: absolute;
   left: var(--nrs-thumb-center);
+  /* 松手后滑行到档位，拖动中由 is-dragging 关掉 */
+  transition: left 0.24s cubic-bezier(0.22, 1, 0.36, 1);
   top: 50%;
   z-index: 6;
   width: 27px;
@@ -1236,6 +1238,9 @@ function onTextareaKeydown(event: KeyboardEvent): void {
 }
 .effort-track:has(.effort-range:active) .effort-track-thumb {
   transform: translate(-50%, -50%) scale(0.95);
+}
+.effort-track.is-dragging .effort-track-thumb {
+  transition: none;
 }
 .permission-trigger {
   display: inline-flex;

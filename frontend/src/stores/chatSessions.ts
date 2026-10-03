@@ -19,7 +19,7 @@ export interface ChatSession {
 const THREAD_PAGE_SIZE = 20
 
 // 消息区一次加载的轮次条数
-const TURN_PAGE_SIZE = 2
+const TURN_PAGE_SIZE = 20
 
 export const useChatSessionsStore = defineStore('chatSessions', () => {
   const sessions = ref<ChatSession[]>([])

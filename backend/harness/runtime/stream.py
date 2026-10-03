@@ -14,8 +14,10 @@ from langchain_core.messages import ToolMessage
 from langgraph.errors import GraphBubbleUp
 
 from harness.agents.lead_agent import Tool, create_lead_agent
+from harness.config.app_config import get_app_config
 from harness.core.logger import get_logger
 from harness.models.factory import ReasoningEffort
+from harness.runtime.checkpointer import get_checkpointer
 from harness.storage import history
 from harness.storage.recorder import TurnRecorder
 
@@ -200,11 +202,14 @@ async def stream_agent(
             tools=tools,
             middleware=middleware,
             system_prompt=system_prompt,
+            checkpointer=get_checkpointer(),
         )
 
+        # 输入只给当轮消息，历史由 thread_id 从检查点取回
         async for chunk in agent.astream(
             {"messages": [{"role": "user", "content": message}]},
             config=run_config,
+            durability=get_app_config().memory.durability,
             stream_mode=["messages", "custom"],
             subgraphs=True,
             version="v2",

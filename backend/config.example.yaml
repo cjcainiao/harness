@@ -21,6 +21,14 @@ system:
   log_backup_count: 7    # 滚动保留的历史文件数，0 表示只留当前文件
   log_console: null      # 是否输出到控制台，null 表示按 env 自动（prod 关闭）
   db_path: data/harness.db   # 历史库文件路径，相对路径按 backend 解析
+  db_busy_timeout_ms: 5000   # 写冲突时的锁等待上限（毫秒），0 表示不等待
+
+# 记忆配置
+memory:
+  enabled: true          # 是否启用短期记忆
+  type: sqlite           # 检查点存储类型
+  db_path: data/checkpoints.db   # 检查点库文件路径，相对路径按 backend 解析
+  durability: async      # 写盘时机：sync 每步同步 / async 每步异步 / exit 仅图退出时
 
 # 模型配置，第一个为默认模型
 models:
