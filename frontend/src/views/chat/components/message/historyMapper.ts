@@ -51,6 +51,13 @@ function toTurnItem(item: TurnItemInfo, index: number): TurnItem {
       toolCallId: item.tool_call_id ?? undefined,
     }
   }
+  if (item.kind === 'error') {
+    return {
+      id: index,
+      type: 'error',
+      content: item.content ?? '',
+    }
+  }
   return {
     id: index,
     type: 'message_chunk',

@@ -1,3 +1,4 @@
+<!--点阵加载动画-->
 <template>
   <span class="dots-matrix" aria-hidden="true">
     <i v-for="(shift, index) in cellPhases" :key="index" :style="{ '--cell': shift }" />

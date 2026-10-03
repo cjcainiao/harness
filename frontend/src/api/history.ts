@@ -2,7 +2,7 @@
 import requestUtil, { type ApiResult } from '@/utils/requestUtil'
 
 /** 渲染段类型 */
-export type TurnItemKind = 'message' | 'reasoning' | 'tool'
+export type TurnItemKind = 'message' | 'reasoning' | 'tool' | 'error'
 
 /** 工具执行状态 */
 export type ToolStatus = 'preparing' | 'running' | 'success' | 'error'
@@ -35,7 +35,7 @@ export interface ThreadCursor {
 export interface TurnItemInfo {
   // 段类型
   kind: TurnItemKind
-  // 正文或推理文本
+  // 正文、推理或失败提示文本
   content: string | null
   // 本段耗时，单位毫秒
   duration_ms: number | null

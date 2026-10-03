@@ -34,7 +34,43 @@ export interface ToolItem {
   toolCallId?: string
 }
 
-export type TurnItem = MessageChunkItem | ReasoningItem | ToolItem
+/** 本轮失败时的提示内容 */
+export interface ErrorItem {
+  id: number
+  type: 'error'
+  content: string
+}
+
+export type TurnItem = MessageChunkItem | ReasoningItem | ToolItem | ErrorItem | ErrorItem
+
+/** 一轮流式回复定位用的临时状态 */
+export interface TurnRuntime {
+  // 下一个显示项序号
+  nextItemId: number
+  // 正在追加的正文项序号
+  activeTextItemId: number | null
+  // 正在追加的推理项序号
+  activeReasoningItemId: number | null
+  // 调用 ID 到显示项序号
+  toolItemsByCallId: Map<string, number>
+  // 并行分片序号到显示项序号
+  toolItemsByIndex: Map<number, number>
+}
+
+// 从已有显示项恢复序号和调用 ID 索引
+export function createTurnRuntime(items: TurnItem[] = []): TurnRuntime {
+  return {
+    nextItemId: items.reduce((nextId, item) => Math.max(nextId, item.id + 1), 0),
+    activeTextItemId: null,
+    activeReasoningItemId: null,
+    toolItemsByCallId: new Map(
+      items.flatMap((item) =>
+        item.type === 'tool' && item.toolCallId ? [[item.toolCallId, item.id] as const] : [],
+      ),
+    ),
+    toolItemsByIndex: new Map(),
+  }
+}
 
 export interface ChatAttachment {
   id: string

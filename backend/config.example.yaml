@@ -33,7 +33,7 @@ memory:
 # 模型配置，第一个为默认模型
 models:
   - name: deepseek # 模型名称
-    display_name: DeepSeek Flash # 显示名称
+    display_name: DeepSeek-V4.1-Flash # 显示名称
     description: DeepSeek 快速模型，支持推理与视觉 # 模型描述
     provider: deepseek # 模型厂商
     use: harness.models.deepseek_provider:DeepSeekChatModel # 模型实现
@@ -42,11 +42,65 @@ models:
     api_key: $DEEPSEEK_API_KEY # 服务密钥
     timeout: 60.0 # 请求超时时间
     max_retries: 2 # 最大重试次数
-    max_tokens: 8192 # 最大输出令牌数
+    max_tokens: 393216 # 最大输出令牌数
     supports_thinking: true # 是否支持推理
     reasoning_levels: [low, high, max] # 模型支持的推理强度
     when_thinking_enabled: {extra_body: {thinking: {type: enabled}}} # 启用推理参数
     when_thinking_disabled: {extra_body: {thinking: {type: disabled}}} # 关闭推理参数
+    supports_vision: true # 是否支持视觉
+    context_window: 1048576 # 模型上下文长度
+
+  - name: deepseek-pro # 模型名称
+    display_name: DeepSeek-V4-Pro # 显示名称
+    description: DeepSeek 强推理模型，支持推理，不支持视觉 # 模型描述
+    provider: deepseek # 模型厂商
+    use: harness.models.deepseek_provider:DeepSeekChatModel # 模型实现
+    model: deepseek-v4-pro # 实际模型名称
+    base_url: https://api.deepseek.com # 服务地址
+    api_key: $DEEPSEEK_API_KEY # 服务密钥
+    timeout: 60.0 # 请求超时时间
+    max_retries: 2 # 最大重试次数
+    max_tokens: 393216 # 最大输出令牌数
+    supports_thinking: true # 是否支持推理
+    reasoning_levels: [low, high, max] # 模型支持的推理强度
+    when_thinking_enabled: {extra_body: {thinking: {type: enabled}}} # 启用推理参数
+    when_thinking_disabled: {extra_body: {thinking: {type: disabled}}} # 关闭推理参数
+    supports_vision: false # 是否支持视觉
+    context_window: 1048576 # 模型上下文长度
+
+  - name: qwen # 模型名称
+    display_name: Qwen3.8-Max # 显示名称
+    description: 千问旗舰模型，支持推理与视觉 # 模型描述
+    provider: alibaba # 模型厂商
+    use: harness.models.qwen_provider:QwenChatModel # 模型实现
+    model: qwen3.8-max # 实际模型名称
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1 # 服务地址
+    api_key: $DASHSCOPE_API_KEY # 服务密钥
+    timeout: 60.0 # 请求超时时间
+    max_retries: 2 # 最大重试次数
+    max_tokens: 131072 # 最大输出令牌数
+    supports_thinking: true # 是否支持推理
+    reasoning_levels: [low, high, max] # 模型支持的推理强度
+    when_thinking_enabled: {enable_thinking: true} # 启用推理参数
+    when_thinking_disabled: {enable_thinking: false} # 关闭推理参数
+    supports_vision: true # 是否支持视觉
+    context_window: 1048576 # 模型上下文长度
+
+  - name: qwen-flash # 模型名称
+    display_name: Qwen3.8-Flash # 显示名称
+    description: 千问轻量模型，支持推理与视觉 # 模型描述
+    provider: alibaba # 模型厂商
+    use: harness.models.qwen_provider:QwenChatModel # 模型实现
+    model: qwen3.8-flash # 实际模型名称
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1 # 服务地址
+    api_key: $DASHSCOPE_API_KEY # 服务密钥
+    timeout: 60.0 # 请求超时时间
+    max_retries: 2 # 最大重试次数
+    max_tokens: 131072 # 最大输出令牌数
+    supports_thinking: true # 是否支持推理
+    reasoning_levels: [low, high, max] # 模型支持的推理强度
+    when_thinking_enabled: {enable_thinking: true} # 启用推理参数
+    when_thinking_disabled: {enable_thinking: false} # 关闭推理参数
     supports_vision: true # 是否支持视觉
     context_window: 1048576 # 模型上下文长度
 

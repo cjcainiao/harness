@@ -1,3 +1,4 @@
+<!--会话顶栏-->
 <template>
   <header class="session-header">
     <div class="session-identity">

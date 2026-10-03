@@ -1,3 +1,4 @@
+<!--思考过程消息-->
 <template>
   <details class="reasoning" :open="open" @toggle="onToggle">
     <summary class="reasoning-header">
@@ -8,13 +9,13 @@
       </span>
     </summary>
 
-    <div class="reasoning-body">{{ content }}</div>
+    <div ref="body" class="reasoning-body">{{ content }}</div>
   </details>
 </template>
 
 <script setup lang="ts">
 import { ChevronDown } from 'lucide-vue-next'
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import ShimmerText from '@/components/ShimmerText.vue'
 
 const props = defineProps<{
@@ -22,11 +23,17 @@ const props = defineProps<{
   startedAt?: number
   durationMs?: number
   streaming: boolean
+  expanded: boolean
 }>()
 
-// 推理到达时自动展开，本轮回复结束后收起
-const open = ref(props.streaming)
+// 本轮回复流式期间保持展开，结束后收起
+const open = ref(props.expanded)
 let toggledByUser = false
+
+// 正文元素，流式追加时要滚动到最新一行
+const body = ref<HTMLElement | null>(null)
+// 距底部多少像素内算停在最新一行
+const BOTTOM_EDGE_PX = 24
 
 // 流式期间用本地时钟刷新已思考时长
 const nowTick = ref(Date.now())
@@ -40,12 +47,35 @@ function stopTimer(): void {
 }
 
 watch(
-  () => props.streaming,
+  () => props.expanded,
   (active) => {
     if (!toggledByUser) open.value = active
+  },
+)
 
+// 追加时跟到最新一行，用户自己往上翻了就不打扰
+watch(
+  () => props.content,
+  () => {
+    const element = body.value
+    if (!element || !props.streaming) return
+    // 这里读到的是新增内容上屏之前的高度
+    if (element.scrollHeight - element.scrollTop - element.clientHeight > BOTTOM_EDGE_PX) return
+    void nextTick(() => {
+      element.scrollTop = element.scrollHeight
+    })
+  },
+)
+
+watch(
+  () => props.streaming,
+  (active) => {
     stopTimer()
-    if (!active) return
+    if (!active) {
+      // 这段推理结束，正文回到开头
+      if (body.value) body.value.scrollTop = 0
+      return
+    }
     nowTick.value = Date.now()
     timerId = window.setInterval(() => {
       nowTick.value = Date.now()

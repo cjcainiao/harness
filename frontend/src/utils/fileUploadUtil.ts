@@ -112,9 +112,20 @@ export function isAllowedUploadFile(file: File): boolean {
   return ALLOWED_UPLOAD_NAMES.has(base) || ALLOWED_UPLOAD_SUFFIXES.has(tail)
 }
 
+// 是否按图片对待，扩展名优先，拖拽进来没有扩展名时看 MIME
+export function isImageUploadFile(file: File): boolean {
+  const { tail } = fileNameTail(file.name)
+  return IMAGE_SUFFIXES.includes(tail) || file.type.startsWith('image/')
+}
+
 // 被拦下文件的提示文案，最多列三个名字
 export function describeRejectedUploadFiles(names: string[]): string {
   const shown = names.slice(0, 3).join('、')
   const more = names.length > 3 ? ` 等 ${names.length} 个文件` : ''
   return `不支持上传这类文件：${shown}${more}`
+}
+
+// 当前模型不支持视觉时的提示文案
+export function describeVisionRejectedFiles(modelName: string): string {
+  return `当前模型「${modelName}」不支持图片上传`
 }

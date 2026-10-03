@@ -1,3 +1,4 @@
+<!--代码编辑器组件-->
 <template>
   <div ref="hostRef" class="code-editor" />
 </template>

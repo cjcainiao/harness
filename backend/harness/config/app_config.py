@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import Any, Self
 
+from dotenv import load_dotenv
 from ruamel.yaml import YAML
 from pydantic import Field
 
@@ -57,6 +58,8 @@ class AppConfig(ToolConfig):
             config_data = _yaml_safe.load(f) or {}
 
         cls._check_config_version(config_data, resolved_path)
+        # 读入 .env
+        load_dotenv(Path(__file__).resolve().parents[2] / ".env")
         config_data = cls.resolve_env_variables(config_data)
 
         return cls.model_validate(config_data)

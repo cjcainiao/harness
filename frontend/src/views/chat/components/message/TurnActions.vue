@@ -1,3 +1,4 @@
+<!--本轮回复操作条-->
 <template>
   <div class="turn-actions" aria-label="本轮回复操作">
     <ElPopover
@@ -52,6 +53,7 @@
         :show-arrow="true"
         :enterable="false"
         :trigger="['hover', 'focus']"
+        :disabled="!canHover"
       >
         <button
           class="action-button"
@@ -66,13 +68,14 @@
         </button>
       </ElTooltip>
       <ElTooltip
-        :content="feedback === 'up' ? '已赞同，点击取消' : '赞同回复'"
+        :content="feedback === 'up' ? '已赞同，点击取消' : '赞同'"
         placement="bottom"
         effect="dark"
         :show-after="350"
         :show-arrow="true"
         :enterable="false"
         :trigger="['hover', 'focus']"
+        :disabled="!canHover"
       >
         <button
           class="action-button"
@@ -86,13 +89,14 @@
         </button>
       </ElTooltip>
       <ElTooltip
-        :content="feedback === 'down' ? '已反对，点击取消' : '反对回复'"
+        :content="feedback === 'down' ? '已反对，点击取消' : '反对'"
         placement="bottom"
         effect="dark"
         :show-after="350"
         :show-arrow="true"
         :enterable="false"
         :trigger="['hover', 'focus']"
+        :disabled="!canHover"
       >
         <button
           class="action-button"
@@ -113,6 +117,7 @@
         :show-arrow="true"
         :enterable="false"
         :trigger="['hover', 'focus']"
+        :disabled="!canHover"
       >
         <button
           class="action-button"
@@ -133,11 +138,14 @@ import { ElPopover, ElTooltip } from 'element-plus'
 import 'element-plus/es/components/popover/style/css'
 import 'element-plus/es/components/tooltip/style/css'
 import { computed, onUnmounted, ref } from 'vue'
+import { copyToClipboard } from '@/utils/clipboardUtil'
 import type { TurnFeedback, TurnItem, TurnUsage } from './messageTurn'
 
 const props = defineProps<{ items: TurnItem[]; usage?: TurnUsage; feedback?: TurnFeedback }>()
 const emit = defineEmits<{ feedback: [value: TurnFeedback | undefined]; fork: [] }>()
 const copied = ref(false)
+// 触屏没有悬停，气泡只会在误触时冒出来
+const canHover = window.matchMedia('(hover: hover)').matches
 let copiedTimer: number | undefined
 const compactFormatter = new Intl.NumberFormat('en-US', {
   notation: 'compact',
@@ -166,14 +174,11 @@ function toggleFeedback(value: TurnFeedback): void {
 }
 
 async function copyReply(): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(replyText.value)
-    copied.value = true
-    window.clearTimeout(copiedTimer)
-    copiedTimer = window.setTimeout(() => (copied.value = false), 1500)
-  } catch {
-    copied.value = false
-  }
+  // 没复制成功就不翻成对勾，图标状态本身就是反馈
+  copied.value = await copyToClipboard(replyText.value)
+  if (!copied.value) return
+  window.clearTimeout(copiedTimer)
+  copiedTimer = window.setTimeout(() => (copied.value = false), 1500)
 }
 
 onUnmounted(() => window.clearTimeout(copiedTimer))
@@ -201,9 +206,6 @@ onUnmounted(() => window.clearTimeout(copiedTimer))
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-.usage-trigger:hover {
-  color: #454c53;
 }
 .usage-separator {
   margin: 0 1px;
@@ -236,17 +238,9 @@ onUnmounted(() => window.clearTimeout(copiedTimer))
   width: 17px;
   height: 17px;
 }
-.action-button:hover {
-  background: #f4f4f5;
-  color: #454c53;
-}
 .action-button.is-copied,
 .action-button.is-active {
   color: #30343a;
-}
-.action-button.is-copied:hover,
-.action-button.is-active:hover {
-  background: transparent;
 }
 .action-button:disabled {
   opacity: 0.45;
@@ -287,6 +281,37 @@ onUnmounted(() => window.clearTimeout(copiedTimer))
 .token-empty {
   margin: 10px 0 0;
   color: #8a9097;
+}
+@media (hover: hover) {
+  .usage-trigger:hover {
+    color: #454c53;
+  }
+  .action-button:hover {
+    background: #f4f4f5;
+    color: #454c53;
+  }
+  .action-button.is-copied:hover,
+  .action-button.is-active:hover {
+    background: transparent;
+  }
+}
+/* 手指比指针粗，命中区放大到 40×40，并去掉点击时的灰色蒙版 */
+@media (any-pointer: coarse) {
+  .action-list {
+    grid-template-columns: repeat(4, 40px);
+    column-gap: 2px;
+  }
+  .action-button {
+    width: 40px;
+    height: 40px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .usage-trigger {
+    min-height: 36px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .action-button {

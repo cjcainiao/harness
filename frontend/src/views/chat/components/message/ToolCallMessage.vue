@@ -1,5 +1,6 @@
+<!--工具调用消息-->
 <template>
-  <details class="tool-group" open>
+  <details class="tool-group" :open="open" @toggle="onToggle">
     <summary class="group-header">
       <span class="group-chevron"><ChevronDown :size="12" /></span>
       <ShimmerText :active="isRunning">执行工具 {{ tools.length }} 次</ShimmerText>
@@ -29,7 +30,9 @@
         <div v-if="hasDetails(tool)" class="tool-details">
           <div v-if="formatValue(tool.arguments)" class="tool-detail">
             <div class="detail-label">参数</div>
-            <pre>{{ formatValue(tool.arguments) }}</pre>
+            <pre :ref="(element) => bindArgBody(tool.id, element)">{{
+              formatValue(tool.arguments)
+            }}</pre>
           </div>
           <div v-if="formatValue(tool.output)" class="tool-detail">
             <div class="detail-label">{{ tool.status === 'error' ? '错误' : '结果' }}</div>
@@ -46,7 +49,8 @@
 
 <script setup lang="ts">
 import { ChevronDown, Circle, CircleCheck, CircleX, LoaderCircle } from 'lucide-vue-next'
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import type { ComponentPublicInstance } from 'vue'
 import ShimmerText from '@/components/ShimmerText.vue'
 
 type ToolStatus = 'preparing' | 'running' | 'success' | 'error'
@@ -62,7 +66,61 @@ interface ToolMessageItem {
   durationMs?: number
 }
 
-const props = defineProps<{ tools: ToolMessageItem[] }>()
+const props = defineProps<{ tools: ToolMessageItem[]; expanded: boolean }>()
+
+// 参数区元素，流式追加时要滚动到最新一行
+const argBodies = new Map<number, HTMLElement>()
+// 正在跟最新的参数区，工具执行完要拉回开头
+const following = new Set<number>()
+// 距底部多少像素内算停在最新一行
+const BOTTOM_EDGE_PX = 24
+
+// v-for 里的元素只能按工具 id 自己登记
+function bindArgBody(id: number, element: Element | ComponentPublicInstance | null): void {
+  if (element instanceof HTMLElement) argBodies.set(id, element)
+  else argBodies.delete(id)
+}
+
+// 本轮回复流式期间保持展开，结束后收起
+const open = ref(props.expanded)
+let toggledByUser = false
+
+watch(
+  () => props.expanded,
+  (active) => {
+    if (!toggledByUser) open.value = active
+  },
+)
+
+// 参数流式追加时跟到最新一行，用户自己往上翻了就不打扰
+watch(
+  () => props.tools.map((tool) => `${tool.status}:${formatValue(tool.arguments).length}`).join('|'),
+  () => {
+    for (const tool of props.tools) {
+      const element = argBodies.get(tool.id)
+      if (!element) continue
+      if (!isRunningTool(tool)) {
+        // 不再追加参数了，之前跟着走的拉回开头
+        if (following.delete(tool.id)) element.scrollTop = 0
+        continue
+      }
+      following.add(tool.id)
+      // 这里读到的是新增内容上屏之前的高度
+      if (element.scrollHeight - element.scrollTop - element.clientHeight > BOTTOM_EDGE_PX) continue
+      void nextTick(() => {
+        element.scrollTop = element.scrollHeight
+      })
+    }
+  },
+)
+
+// 浏览器开合 details 时同步状态，用户手动开合后不再自动改
+function onToggle(event: Event): void {
+  const expanded = (event.target as HTMLDetailsElement).open
+  if (expanded === open.value) return
+  toggledByUser = true
+  open.value = expanded
+}
 
 const statusLabels: Record<ToolStatus, string> = {
   preparing: '准备中',

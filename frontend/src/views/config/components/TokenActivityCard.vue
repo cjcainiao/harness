@@ -1,3 +1,4 @@
+<!--Token 活动统计卡-->
 <template>
   <section class="token-activity">
     <header class="activity-head">

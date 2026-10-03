@@ -1,3 +1,4 @@
+<!--进行中文案扫光-->
 <template>
   <span class="shimmer-text" :class="{ 'is-plain': !active }"><slot /></span>
 </template>

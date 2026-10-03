@@ -1,3 +1,4 @@
+<!--配置模块布局-->
 <template>
   <div class="config-layout">
     <!-- 左侧设置导航 -->
@@ -17,6 +18,12 @@ import ConfigNav from './components/ConfigNav.vue'
 .config-layout {
   display: flex;
   height: 100vh;
+}
+/* 移动端可视区高度 */
+@supports (height: 100dvh) {
+  .config-layout {
+    height: 100dvh;
+  }
 }
 .config-main {
   flex: 1;

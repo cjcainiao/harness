@@ -1,3 +1,4 @@
+<!--流式状态提示-->
 <template>
   <div class="stream-status" :class="{ 'is-active': active }" role="status">
     <DotsMatrix />

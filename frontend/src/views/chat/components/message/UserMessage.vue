@@ -1,3 +1,4 @@
+<!--用户消息-->
 <template>
   <div class="user-message">
     <div
@@ -73,6 +74,7 @@ import { computed, onUnmounted, ref } from 'vue'
 import { Check, Copy, Pencil } from 'lucide-vue-next'
 import type { ChatAttachment } from './messageTurn'
 import { useDragScroll } from '@/utils/dragScrollUtil'
+import { copyToClipboard } from '@/utils/clipboardUtil'
 import AttachmentCard from '@/views/chat/components/attachment/AttachmentCard.vue'
 
 // 附件条只占一排，超出用横向拖动滚动，触屏交给原生滑动
@@ -109,14 +111,10 @@ const sentDateTime = computed(() => sentDate.value?.toISOString())
 
 // 复制成功后短暂显示确认状态
 async function copyMessage(): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(props.content)
-    copied.value = true
-    window.clearTimeout(copiedTimer)
-    copiedTimer = window.setTimeout(() => (copied.value = false), 1500)
-  } catch {
-    copied.value = false
-  }
+  copied.value = await copyToClipboard(props.content)
+  if (!copied.value) return
+  window.clearTimeout(copiedTimer)
+  copiedTimer = window.setTimeout(() => (copied.value = false), 1500)
 }
 
 onUnmounted(() => window.clearTimeout(copiedTimer))

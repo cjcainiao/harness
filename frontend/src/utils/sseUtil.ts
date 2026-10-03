@@ -4,7 +4,7 @@ import {
   type EventSourceMessage,
 } from '@microsoft/fetch-event-source'
 
-const DEFAULT_API_BASE_URL = 'http://127.0.0.1:8000'
+const DEFAULT_API_BASE_URL = ''
 
 /** 解析后的 SSE 消息 */
 export interface SseMessage<T = unknown> {

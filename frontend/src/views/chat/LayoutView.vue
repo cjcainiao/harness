@@ -1,3 +1,4 @@
+<!--聊天模块布局-->
 <template>
   <div class="chat-layout" @keydown.esc="sidebarOpen = false">
     <!-- 左侧导航栏 -->
@@ -81,6 +82,12 @@ function onSidebarClick(event: MouseEvent) {
   display: flex;
   height: 100vh;
 }
+/* 移动端可视区高度 */
+@supports (height: 100dvh) {
+  .chat-layout {
+    height: 100dvh;
+  }
+}
 .chat-main {
   flex: 1;
   min-width: 0;
@@ -100,9 +107,6 @@ function onSidebarClick(event: MouseEvent) {
   display: none;
 }
 @media (max-width: 700px) {
-  .chat-layout {
-    height: 100dvh;
-  }
   .chat-sidebar {
     position: fixed;
     z-index: 31;

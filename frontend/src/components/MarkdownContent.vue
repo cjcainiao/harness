@@ -1,3 +1,4 @@
+<!--Markdown 渲染组件-->
 <template>
   <div class="markdown-content" v-html="renderedHtml" />
 </template>

@@ -257,13 +257,14 @@ async def stream_agent(
             error=str(error),
             exc_info=True,
         )
-        yield _encode_sse(
-            {
-                "type": "error",
-                "code": 500,
-                "message": "服务器内部错误",
-            }
-        )
+        event = {
+            "type": "error",
+            "code": 500,
+            "message": "服务器内部错误",
+        }
+        # 失败提示攒进渲染段，收尾时才有内容可写
+        track(event)
+        yield _encode_sse(event)
     finally:
         # 补一次结束事件，定格没有闭合的推理段
         recorder.feed({"type": "done"})

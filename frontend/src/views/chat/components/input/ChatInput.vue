@@ -1,3 +1,4 @@
+<!--消息输入组件-->
 <template>
   <div ref="inputRootRef" class="chat-input-box">
     <SlashCommandMenu
@@ -78,12 +79,8 @@
       <!-- 底部工具行 -->
       <div class="input-toolbar">
         <div class="toolbar-left">
-          <ElTooltip
-            content="添加附件"
-            placement="top"
-            :show-after="300"
-            :trigger="['hover', 'focus']"
-          >
+          <!-- 只按悬停触发，避免焦点回来自弹 -->
+          <ElTooltip content="添加附件" placement="top" :show-after="300" :disabled="!canHover">
             <button
               class="tool-btn tool-icon-btn"
               type="button"
@@ -297,8 +294,8 @@
             class="send-btn"
             :class="{ 'is-responding': isResponding }"
             type="button"
-            :aria-label="isResponding ? '停止回复' : '发送消息'"
-            :disabled="!isResponding && !text.trim()"
+            :aria-label="sendButtonLabel"
+            :disabled="!isResponding && (!text.trim() || streamLimited)"
             @click="onPrimaryAction"
           >
             <Square v-if="isResponding" :size="12" fill="currentColor" :stroke-width="1.5" />
@@ -330,16 +327,30 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { ChatSendRequest } from '@/api/chat'
 import { fetchModels, type ModelInfo } from '@/api/config'
 import { useDragScroll } from '@/utils/dragScrollUtil'
-import { describeRejectedUploadFiles, isAllowedUploadFile } from '@/utils/fileUploadUtil'
+import {
+  describeRejectedUploadFiles,
+  describeVisionRejectedFiles,
+  isAllowedUploadFile,
+  isImageUploadFile,
+} from '@/utils/fileUploadUtil'
 import AttachmentCard from '@/views/chat/components/attachment/AttachmentCard.vue'
 import EnergyField from './EnergyField.vue'
 import SlashCommandMenu from './SlashCommandMenu.vue'
 
-const props = withDefaults(defineProps<{ isResponding?: boolean }>(), { isResponding: false })
+const props = withDefaults(defineProps<{ isResponding?: boolean; streamLimited?: boolean }>(), {
+  isResponding: false,
+  streamLimited: false,
+})
 const emit = defineEmits<{
   send: [message: { content: string; files: File[]; request: ChatSendRequest }]
   stop: []
 }>()
+const sendButtonLabel = computed(() => {
+  if (props.isResponding) return '停止回复'
+  return props.streamLimited ? '同时进行的回复已达上限' : '发送消息'
+})
+// 悬停能力探测
+const canHover = window.matchMedia('(hover: hover)').matches
 const text = ref('')
 const inputRootRef = ref<HTMLElement>()
 const commandMenuRef = ref<InstanceType<typeof SlashCommandMenu>>()
@@ -408,11 +419,23 @@ function addFiles(files: File[]) {
   // 先过类型白名单，不合格的只提示、不进附件条
   const accepted: File[] = []
   const rejected: string[] = []
+  let visionRejected = false
   for (const file of files) {
-    if (isAllowedUploadFile(file)) accepted.push(file)
-    else rejected.push(file.name)
+    if (!isAllowedUploadFile(file)) {
+      rejected.push(file.name)
+      continue
+    }
+    // 没有视觉能力的模型不收图片，同样只提示、不进附件条
+    if (isImageUploadFile(file) && !selectedModel.value?.supports_vision) {
+      visionRejected = true
+      continue
+    }
+    accepted.push(file)
   }
-  if (rejected.length > 0) ElMessage.warning(describeRejectedUploadFiles(rejected))
+  if (rejected.length > 0)
+    ElMessage.warning({ message: describeRejectedUploadFiles(rejected), plain: true })
+  if (visionRejected)
+    ElMessage.warning({ message: describeVisionRejectedFiles(modelLabel.value), plain: true })
 
   const existing = new Set(selectedFiles.value.map((item) => fileKey(item.file)))
   for (const file of accepted) {
@@ -575,7 +598,10 @@ function chooseModel(name: string) {
   if (reasoningOptions.value.includes(reasoningEffort.value)) return
   const dropped = reasoningEffort.value
   reasoningEffort.value = EFFORT_OFF
-  ElMessage.warning(`${modelLabel.value} 不支持 ${dropped} 推理强度，已切到${EFFORT_OFF}`)
+  ElMessage.warning({
+    message: `${modelLabel.value} 不支持 ${dropped} 推理强度，已切到${EFFORT_OFF}`,
+    plain: true,
+  })
 }
 
 async function closeModelMenu() {
@@ -685,7 +711,10 @@ async function loadModels() {
     models.value = await fetchModels()
     selectedModelName.value = models.value[0]?.name ?? ''
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '获取模型列表失败')
+    ElMessage.error({
+      message: error instanceof Error ? error.message : '获取模型列表失败',
+      plain: true,
+    })
   } finally {
     modelsLoading.value = false
   }
@@ -826,6 +855,8 @@ function sendMessage() {
   const files = selectedFiles.value.map((item) => item.file)
   // 必须有文字才发，只有附件不算一次提问
   if (!content) return
+  // 并发满了不发，草稿留着
+  if (props.streamLimited) return
   emit('send', { content, files, request: chatOptions.value })
   text.value = ''
   commandMenuDismissed.value = false
@@ -865,6 +896,8 @@ function onTextareaKeydown(event: KeyboardEvent): void {
     }
   }
   if (event.key !== 'Enter' || event.shiftKey) return
+  // 触屏回车算换行，发送交给按钮
+  if (!canHover) return
   event.preventDefault()
   if (props.isResponding) return
   sendButtonRef.value?.click()
@@ -920,18 +953,18 @@ function onTextareaKeydown(event: KeyboardEvent): void {
     border-color 0.15s,
     background-color 0.15s;
 }
-.input-card:hover .resize-grip,
 .input-card:focus-within .resize-grip,
 .resize-handle.is-resizing .resize-grip {
   opacity: 1;
 }
-.resize-handle:hover .resize-grip {
-  opacity: 1;
-  border-color: #b9c0ca;
-}
-.resize-handle.is-resizing .resize-grip {
-  border-color: #8fa8d4;
-  background: #eaf0fa;
+@media (hover: hover) {
+  .input-card:hover .resize-grip,
+  .resize-handle:hover .resize-grip {
+    opacity: 1;
+  }
+  .resize-handle:hover .resize-grip {
+    border-color: #b9c0ca;
+  }
 }
 /* 触屏没有悬停态，胶囊常驻显示 */
 @media (hover: none) {
@@ -939,8 +972,12 @@ function onTextareaKeydown(event: KeyboardEvent): void {
     opacity: 1;
   }
 }
-/* 手指比指针粗，命中区放大到 160×32 */
-@media (pointer: coarse) {
+.resize-handle.is-resizing .resize-grip {
+  border-color: #8fa8d4;
+  background: #eaf0fa;
+}
+/* 命中区放大到 160×32 */
+@media (any-pointer: coarse) {
   .resize-handle {
     width: 160px;
     height: 32px;
@@ -1403,6 +1440,41 @@ function onTextareaKeydown(event: KeyboardEvent): void {
   .send-btn {
     width: 40px;
     height: 40px;
+  }
+  /* 去掉 300ms 双击缩放延迟和点击灰块 */
+  .tool-btn,
+  .permission-trigger,
+  .send-btn,
+  .menu-option,
+  .effort-label {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+/* iOS 聚焦时字号不足 16px 会整页放大 */
+@media (hover: none) {
+  .input-textarea {
+    font-size: 16px;
+  }
+}
+/* 窄屏放不下整名模型，让模型名先省略 */
+@media (max-width: 640px) {
+  .chat-input-box {
+    padding: 0 10px;
+  }
+  .input-toolbar {
+    padding: 4px 6px 6px;
+  }
+  .toolbar-left,
+  .toolbar-right {
+    gap: 2px;
+  }
+  .tool-model-btn {
+    min-width: 0;
+    max-width: min(40vw, 200px);
+  }
+  .permission-trigger {
+    padding: 0 6px;
   }
 }
 .tool-btn:active,

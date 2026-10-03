@@ -16,8 +16,8 @@ router = APIRouter(prefix="/chat", tags=["会话历史"])
 class TurnItemInfo(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    kind: str = Field(description="段类型，取值 message / reasoning / tool")
-    content: str | None = Field(default=None, description="正文或推理文本")
+    kind: str = Field(description="段类型，取值 message / reasoning / tool / error")
+    content: str | None = Field(default=None, description="正文、推理或失败提示文本")
     duration_ms: int | None = Field(default=None, description="本段耗时，单位毫秒")
     tool: str | None = Field(default=None, description="工具名称")
     tool_call_id: str | None = Field(default=None, description="工具调用标识")

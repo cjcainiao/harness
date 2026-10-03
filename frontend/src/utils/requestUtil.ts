@@ -55,7 +55,8 @@ export class RequestUtil {
 
   constructor() {
     this.client = axios.create({
-      baseURL: import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000',
+      // 默认同源相对路径，跨源部署才配 VITE_API_BASE_URL
+      baseURL: import.meta.env.VITE_API_BASE_URL ?? '',
       timeout: 30_000,
       headers: {
         Accept: 'application/json',

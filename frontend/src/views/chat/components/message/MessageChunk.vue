@@ -1,3 +1,4 @@
+<!--回复正文消息-->
 <template>
   <div class="message-chunk" v-html="renderedHtml" @click="onCodeClick" />
 </template>
@@ -10,6 +11,7 @@ import type { RendererRule } from 'markdown-it'
 import { computed, inject, ref } from 'vue'
 import type { Component } from 'vue'
 import CodeRunView from '@/views/chat/pages/CodeRunView.vue'
+import { copyToClipboard } from '@/utils/clipboardUtil'
 
 const props = defineProps<{ content: string }>()
 
@@ -88,11 +90,7 @@ function onCodeClick(event: MouseEvent): void {
 }
 
 async function copyCode(code: string, button: HTMLElement): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(code)
-  } catch {
-    return
-  }
+  if (!(await copyToClipboard(code))) return
   button.classList.add('is-copied')
   button.dataset.tip = '已复制'
   window.setTimeout(() => {

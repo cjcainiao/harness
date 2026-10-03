@@ -1,3 +1,4 @@
+<!--聊天主页面-->
 <template>
   <div class="chat-index" @keydown.esc="closeDrawer">
     <SessionHeader
@@ -24,6 +25,7 @@
         ref="chatInput"
         :key="threadId"
         :is-responding="isResponding"
+        :stream-limited="!chatSessions.hasStreamSlot()"
         @send="handleSend"
         @stop="handleStop"
       />
@@ -51,12 +53,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, provide, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { ChatSendRequest } from '@/api/chat'
 import { useChatSessionsStore } from '@/stores/chatSessions'
 import { setPageTitle } from '@/utils/pageTitleUtil'
+import { createUuid } from '@/utils/uuidUtil'
 import ChatDrawer from './components/drawer/ChatDrawer.vue'
 import ChatInput from './components/input/ChatInput.vue'
 import StreamStatus from './components/input/StreamStatus.vue'
@@ -72,7 +75,7 @@ const route = useRoute()
 const router = useRouter()
 const chatSessions = useChatSessionsStore()
 // 新对话没有路由 ID 时保留稳定的临时 ID
-const newThreadId = crypto.randomUUID()
+const newThreadId = createUuid()
 chatSessions.markHistoryLoaded(newThreadId)
 const threadId = computed(() => {
   const id = route.query.thread_id
@@ -116,6 +119,24 @@ watch(
   { immediate: true },
 )
 
+// 打开或聚焦到当前会话时清掉未读点
+function readCurrentThread(): void {
+  if (document.hidden || !document.hasFocus()) return
+  chatSessions.clearUnread(threadId.value)
+}
+
+watch(threadId, readCurrentThread, { immediate: true })
+
+onMounted(() => {
+  window.addEventListener('focus', readCurrentThread)
+  document.addEventListener('visibilitychange', readCurrentThread)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('focus', readCurrentThread)
+  document.removeEventListener('visibilitychange', readCurrentThread)
+})
+
 // 登记会话后创建本次提问的 turn
 function handleSend(message: { content: string; files: File[]; request: ChatSendRequest }) {
   chatSessions.ensureSession(threadId.value)
@@ -143,7 +164,7 @@ function handleForkCreated(id: string): void {
 }
 
 function handleFollowUp(question: string): void {
-  if (isResponding.value) return
+  if (isResponding.value || !chatSessions.hasStreamSlot()) return
   const options: ChatSendRequest = chatInput.value?.chatOptions ?? {}
   handleSend({ content: question, files: [], request: options })
 }

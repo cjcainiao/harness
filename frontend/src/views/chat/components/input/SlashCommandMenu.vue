@@ -1,3 +1,4 @@
+<!--斜杠命令菜单-->
 <template>
   <div id="slash-command-menu" class="slash-command-menu" role="listbox" aria-label="可用命令">
     <div class="command-list">
@@ -154,8 +155,7 @@ defineExpose({ moveSelection, selectActive })
   text-align: left;
   white-space: nowrap;
 }
-.command-row.is-active,
-.command-row:hover {
+.command-row.is-active {
   background: #f2f2f2;
 }
 .command-row:focus-visible {
@@ -182,9 +182,23 @@ defineExpose({ moveSelection, selectActive })
   font-size: 12px;
   text-align: center;
 }
+@media (hover: hover) {
+  .command-row:hover {
+    background: #f2f2f2;
+  }
+}
 @media (any-pointer: coarse) {
   .command-row {
     height: 36px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+/* 与输入卡片左右留白对齐 */
+@media (max-width: 640px) {
+  .slash-command-menu {
+    left: 10px;
+    right: 10px;
   }
 }
 </style>

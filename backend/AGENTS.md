@@ -47,6 +47,13 @@
 - 懒加载工具靠 `tool_search` 结果留在对话历史里才可见，接了检查点后同一 `thread_id` 的历史跨请求延续，换会话要重新检索
 - 部署级参数（默认上限、路径白名单等）放注册项的 `settings:`，工具运行时经 `get_app_config()` 按工具名自查，settings 缺关键项直接报错，不留代码兜底默认值；此类参数不进 args、不对模型暴露硬上限
 
+## 镜像构建
+- `backend/Dockerfile` 的构建上下文就是 `backend/` 目录，COPY 清单固定为 `app/`、`harness/`、`pyproject.toml`、`uv.lock`、`.python-version`、`config.yaml`、`.env`，新增要进镜像的文件得同步这一处
+- 依赖只按锁文件装：`uv sync --frozen --no-dev --no-install-project`，`harness` 本身不是可安装包
+- `config.yaml` 与 `.env` 烘进镜像，容器内 `system.host` 必须是 `0.0.0.0`，否则端口映射打不通；密钥随镜像层分发，镜像要外发前先换成运行期注入
+- 监听端口取自 `config.yaml`，`EXPOSE` 和 `HEALTHCHECK` 里的 8000 是写死的，改端口要同步这两处
+- 启动用 `python -m app.main`，不走 `uv run` 所以不触发依赖同步；`.env` 靠 `harness/config/app_config.py` 自己 `load_dotenv`
+
 ## 代码风格
 - 注释用中文短语标签，一行以内，写在被注释代码上方，如 `# 加载 yaml`
 - 不做第三人称介绍式注释，不解释显而易见的代码

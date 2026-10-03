@@ -17,11 +17,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      // /api 请求去掉前缀转发到后端
+      // /api 原样转发到后端，后端路由自带这一层前缀
       '/api': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
   },

@@ -29,18 +29,21 @@ ENV TZ=Asia/Shanghai \
 
 WORKDIR /app
 
-# 依赖层，只拷锁文件，改代码不触发重装
-COPY pyproject.toml uv.lock ./
+# 主程序包
+COPY app/ ./app/
+# 框架包
+COPY harness/ ./harness/
+# 依赖清单与 Python 版本
+COPY pyproject.toml uv.lock .python-version ./
+# 运行配置
+COPY config.yaml ./
+# 密钥取值来源
+COPY .env ./
+
+# 按锁文件装依赖，不含 dev 组，项目本身不是可安装包
 RUN uv sync --frozen --no-dev --no-install-project --no-cache
 
-# 源码层，config.yaml/.env/data/logs/.venv 一律不进镜像
-COPY app/ ./app/
-COPY harness/ ./harness/
-# 配置模板，配置版本比对要用
-COPY config.example.yaml ./
-
-# 数据目录预建，config.yaml 挂载进来要保证运行用户可写
-# 顺手清掉宿主带进来的编译缓存
+# 清编译缓存，建数据与日志目录，整棵树交给运行用户
 RUN find /app/app /app/harness -type d -name __pycache__ -prune -exec rm -rf {} + \
     && useradd --uid 10001 --create-home --shell /bin/bash app \
     && mkdir -p /app/data /app/logs \
@@ -48,7 +51,7 @@ RUN find /app/app /app/harness -type d -name __pycache__ -prune -exec rm -rf {} 
 
 USER app
 
-# 实际监听地址和端口由 config.yaml 的 system.host/port 决定，容器内需配成 0.0.0.0
+# 监听地址和端口取自镜像内 config.yaml 的 system.host/port，必须是 0.0.0.0
 EXPOSE 8000
 
 # 健康检查，/health 不在 api 前缀下

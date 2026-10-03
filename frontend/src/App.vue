@@ -1,3 +1,4 @@
+<!--应用根组件-->
 <template>
   <RouterView />
 </template>

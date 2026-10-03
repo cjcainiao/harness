@@ -1,3 +1,4 @@
+<!--能量场背景动画-->
 <template>
   <canvas ref="canvasRef" class="nrs-energy is-light" aria-hidden="true" />
 </template>

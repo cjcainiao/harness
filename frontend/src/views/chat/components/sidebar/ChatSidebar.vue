@@ -1,3 +1,4 @@
+<!--左侧导航栏-->
 <template>
   <aside class="chat-sidebar">
     <!-- 顶部菜单，固定 -->

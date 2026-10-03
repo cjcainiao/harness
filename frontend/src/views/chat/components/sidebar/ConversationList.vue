@@ -1,3 +1,4 @@
+<!--会话历史列表-->
 <template>
   <div ref="listRef" class="conversation-list" @scroll="checkViewport">
     <!-- 会话历史列表 -->
@@ -10,12 +11,13 @@
         :class="{ 'is-active': route.query.thread_id === item.id }"
         type="button"
         :aria-current="route.query.thread_id === item.id ? 'page' : undefined"
-        :aria-busy="chatSessions.respondingThreadId === item.id || undefined"
+        :aria-busy="chatSessions.respondingThreadIds.has(item.id) || undefined"
         @click="openConversation(item.id)"
       >
         <MessageSquare :size="14" />
         <span class="item-title">{{ item.title }}</span>
-        <DotsMatrix v-if="chatSessions.respondingThreadId === item.id" class="item-dots" />
+        <DotsMatrix v-if="chatSessions.respondingThreadIds.has(item.id)" class="item-dots" />
+        <span v-else-if="chatSessions.isUnread(item.id)" class="item-unread" aria-hidden="true" />
       </button>
     </section>
 
@@ -164,6 +166,14 @@ onUnmounted(() => window.removeEventListener('resize', checkViewport))
 .item-dots {
   margin-left: 2px;
   opacity: 0.75;
+}
+.item-unread {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: #2f8cff;
 }
 .list-tip {
   margin: 0;

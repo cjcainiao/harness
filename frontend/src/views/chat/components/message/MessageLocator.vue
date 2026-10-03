@@ -1,3 +1,4 @@
+<!--消息定位轨-->
 <template>
   <div v-if="markers.length" ref="locatorRoot" class="message-locator">
     <nav
@@ -36,7 +37,8 @@
       role="tooltip"
       :style="{ top: `${previewTop}px` }"
     >
-      <span>{{ previewMarker.label }}</span>
+      <strong class="preview-title">{{ previewMarker.label }}</strong>
+      <p v-if="previewMarker.excerpt" class="preview-body">{{ previewMarker.excerpt }}</p>
     </div>
   </div>
 </template>
@@ -47,6 +49,7 @@ import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 interface LocatorItem {
   id: number
   label: string
+  excerpt?: string
 }
 
 type Marker = LocatorItem
@@ -63,6 +66,8 @@ const waveCenter = ref<number | null>(null)
 const previewTop = ref(0)
 const locatorRoot = ref<HTMLElement | null>(null)
 const rail = ref<HTMLElement | null>(null)
+// 悬停能力探测
+const canHover = window.matchMedia('(hover: hover)').matches
 let resizeObserver: ResizeObserver | null = null
 let frameId: number | null = null
 let pointerOverRail: boolean = false
@@ -155,11 +160,16 @@ function showPreviewAtElement(marker: Marker, button: HTMLElement): void {
   const root = locatorRoot.value
   if (!root) return
   const top = button.getBoundingClientRect().top - root.getBoundingClientRect().top + 5
-  previewTop.value = Math.max(30, Math.min(root.clientHeight - 30, top))
+  // 按卡片半高留白，避免顶出可视区
+  previewTop.value = Math.max(70, Math.min(root.clientHeight - 70, top))
   previewMarker.value = marker
 }
 
 function showPreview(marker: Marker, event: Event): void {
+  // 触屏点按和聚焦不弹卡片
+  if (event instanceof PointerEvent && event.pointerType !== 'mouse') return
+  if (event instanceof FocusEvent && !canHover) return
+
   if (event instanceof PointerEvent) updateWave(event)
   else waveCenter.value = markers.value.findIndex((item) => item.id === marker.id)
   showPreviewAtElement(marker, event.currentTarget as HTMLElement)
@@ -171,6 +181,7 @@ function hidePreview(): void {
 }
 
 function onRailPointerEnter(event: PointerEvent): void {
+  if (event.pointerType !== 'mouse') return
   pointerOverRail = true
   updateWave(event)
 }
@@ -247,6 +258,7 @@ function onPointerDown(event: PointerEvent): void {
 }
 
 function onPointerMove(event: PointerEvent): void {
+  if (event.pointerType !== 'mouse') return
   updateWave(event)
   if (dragging) {
     scrubToPointer(event)
@@ -360,20 +372,33 @@ onUnmounted(() => {
   left: 44px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  width: max-content;
-  max-width: min(260px, calc(100vw - 72px));
-  padding: 8px 10px;
-  border: 1px solid #e6e8eb;
-  border-radius: 8px;
+  gap: 6px;
+  width: 236px;
+  max-width: min(236px, calc(100vw - 72px));
+  padding: 12px 14px;
+  border: 1px solid #eceef0;
+  border-radius: 10px;
   background: #fff;
-  box-shadow: 0 4px 16px #00000012;
-  color: #363c42;
-  font-size: 12px;
-  line-height: 1.4;
+  box-shadow: 0 6px 20px #00000014;
   overflow-wrap: anywhere;
   pointer-events: none;
   transform: translateY(-50%);
+}
+.preview-title {
+  color: #202327;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.preview-body {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  margin: 0;
+  overflow: hidden;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.6;
 }
 @media (max-width: 640px) {
   .locator-rail {
@@ -381,6 +406,22 @@ onUnmounted(() => {
   }
   .locator-preview {
     left: 38px;
+  }
+}
+/* 触屏命中区加高，轨道滚到头让给整页 */
+@media (any-pointer: coarse) {
+  .locator-rail {
+    left: 0;
+    width: 34px;
+    overscroll-behavior: auto;
+  }
+  .locator-mark {
+    flex: 0 0 26px;
+    width: 34px;
+    height: 26px;
+    padding-left: 6px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 }
 @media (prefers-reduced-motion: reduce) {

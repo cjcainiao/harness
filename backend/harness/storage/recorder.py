@@ -240,3 +240,7 @@ class TurnRecorder:
             self._handle_tool_finish(event, STATUS_ERROR)
         elif event_type == "usage":
             self._handle_usage(event)
+        elif event_type == "error":
+            content = event.get("message")
+            if isinstance(content, str) and content:
+                self._segments.append({"kind": "error", "content": content})
