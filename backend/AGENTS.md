@@ -47,6 +47,24 @@
 - 懒加载工具靠 `tool_search` 结果留在对话历史里才可见，接了检查点后同一 `thread_id` 的历史跨请求延续，换会话要重新检索
 - 部署级参数（默认上限、路径白名单等）放注册项的 `settings:`，工具运行时经 `get_app_config()` 按工具名自查，settings 缺关键项直接报错，不留代码兜底默认值；此类参数不进 args、不对模型暴露硬上限
 
+## 技能规范
+- 技能内容与加载代码分开：技能包在 `backend/skills/`，扫描与名单渲染在 `harness/skills/`
+- 技能根目录取自 `skills.dir`，相对路径按后端项目根解析；`skills.enabled: false` 时不扫描、不注入提示词
+- 根目录下按 `skills.categories` 分分类目录，`custom` 放项目自己写的技能（入版本控制），`public` 放第三方装进来的（`.gitignore` 掉），靠前的分类优先
+- 一个技能一个目录，目录内必须有 `skills.file`（默认 `SKILL.md`）；放进目录即启用，目录名加 `.` 前缀即停用，不留第二份启用状态
+- frontmatter 只写 `name` 和 `description`：`name` 必须等于所在目录名，字符集取自 `skills.name_pattern`（默认小写字母、数字与连字符）；`description` 说清做什么与何时使用，上限取自 `skills.description_limit`（默认 1024 字）
+- 三个可选子目录按用途固定：`scripts/` 放可执行代码，`references/` 放文档资料，`assets/` 放模板与静态资源；代码文件不进 `assets/`
+- `SKILL.md` 正文只写判断和执行顺序，细节一律推到 `references/`，建议 60 行以内
+- 渐进披露：提示词只注入技能名、描述和主文件绝对路径，正文由模型自己用 `read_file` 取，不预注入
+- 进提示词的技能条数受 `skills.max_in_prompt` 限制，先按分类再按名字排序，超出截断并告警
+- 不为技能新增取用工具，通道就是 `read_file`
+- 每次建图重扫技能目录，不做缓存；改完 `SKILL.md` 下一轮生效
+- 技能名重复时保留排序靠前的，后者告警跳过，不静默覆盖
+- 符号链接目录不跟随；根目录不存在告警后按空名单处理，缺主文件、缺 `name` 或 `description`、字符集不合规等技能包逐个告警跳过，建图不因技能失败
+- 写进提示词的技能路径一律绝对路径，分隔符用 `/`
+- 现有工具里没有执行命令的，`scripts/` 由开发侧运行，技能正文不得声称模型能运行它
+- 技能包结构自检：`uv run python skills/custom/<技能名>/scripts/check_skill.py`，退出码非 0 按提示改
+
 ## 镜像构建
 - `backend/Dockerfile` 的构建上下文就是 `backend/` 目录，COPY 清单固定为 `app/`、`harness/`、`pyproject.toml`、`uv.lock`、`.python-version`、`config.yaml`、`.env`，新增要进镜像的文件得同步这一处
 - 依赖只按锁文件装：`uv sync --frozen --no-dev --no-install-project`，`harness` 本身不是可安装包

@@ -14,19 +14,22 @@ OUTPUT_RULES = """面向用户的回答不要出现内部标识符，包括工�
 用户自己给出的路径、文件名、原文内容可以照常引用，这些不属于内部标识符。
 无论是否调用工具，最后都要给出清晰结论，并说明结果来自工具返回还是你的推理。"""
 
-# 模板骨架，懒加载工具名单由调用方渲染后注入
+# 模板骨架，名单由调用方渲染后注入
 TEMPLATE = """{role}
 
 {tool_rules}
 
-{output_rules}{deferred_tools}"""
+{output_rules}{deferred_tools}{skills}"""
 
 
 # 渲染主代理提示词，规则块无条件拼接
-def render_lead_agent_prompt(role: str | None = None, deferred_tools: str = "") -> str:
+def render_lead_agent_prompt(
+    role: str | None = None, deferred_tools: str = "", skills: str = ""
+) -> str:
     return TEMPLATE.format(
         role=role or ROLE,
         tool_rules=TOOL_RULES,
         output_rules=OUTPUT_RULES,
         deferred_tools=deferred_tools,
+        skills=skills,
     )

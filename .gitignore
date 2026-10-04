@@ -90,6 +90,8 @@ backend/data/
 backend/uploads/
 backend/storage/
 backend/cache/
+# 第三方技能包
+backend/skills/public/
 .chroma/
 chroma_db/
 vector_store/

@@ -12,8 +12,10 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from harness.agents.middlewares.builder import build_agent_middleware
 from harness.agents.prompts.lead_agent import render_lead_agent_prompt
+from harness.agents.thread_state import ThreadState
 from harness.config.app_config import AppConfig, get_app_config
 from harness.models.factory import ReasoningEffort, create_chat_model
+from harness.skills.loader import load_skills, skills_section
 from harness.tools.loader import load_default_tools
 from harness.tools.tool_search import build_registry, deferred_tools_section
 
@@ -52,10 +54,11 @@ def create_lead_agent(
 
     bound_tools.update((tool.name, tool) for tool in tools or ())
 
-    # 渲染系统提示词，自定义内容只替换身份段，规则与懒加载名单始终拼接
+    # 渲染系统提示词，自定义内容只替换身份段
     prompt = render_lead_agent_prompt(
         role=system_prompt,
         deferred_tools=deferred_tools_section(),
+        skills=skills_section(load_skills()),
     )
 
     # 统一组装模型、工具、中间件、系统提示词与检查点
@@ -63,6 +66,7 @@ def create_lead_agent(
         model=model,
         tools=list(bound_tools.values()),
         middleware=build_agent_middleware(middleware),
+        state_schema=ThreadState,
         system_prompt=prompt,
         checkpointer=checkpointer,
         debug=config.system.debug,

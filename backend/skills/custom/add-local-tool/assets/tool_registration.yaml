@@ -1,0 +1,11 @@
+# 工具登记条目模板
+
+tools:
+  - name: tool_name # 工具名称
+    group: system # 所属工具组
+    use: harness.tools.system.module_name:tool_name # 工具实现
+    enabled: true # 是否启用
+    aliases: [能力词一, 能力词二] # 查找别名
+    settings: {
+      default_max_items: 200 # 默认条目上限
+    } # 工具额外配置

@@ -9,14 +9,15 @@ withDefaults(defineProps<{ active?: boolean }>(), { active: true })
 </script>
 
 <style scoped>
+/* 两端铺底色，扫过的只有中间亮带 */
 .shimmer-text {
   background-image: linear-gradient(
     110deg,
-    var(--shimmer-base, #6d757e) 35%,
-    var(--shimmer-highlight, #eaeef2) 50%,
-    var(--shimmer-base, #6d757e) 75%
+    var(--shimmer-base, #6d757e) 0 42%,
+    var(--shimmer-highlight, #b6bec7) 50%,
+    var(--shimmer-base, #6d757e) 58% 100%
   );
-  background-size: 200% 100%;
+  background-size: 250% 100%;
   background-repeat: no-repeat;
   -webkit-background-clip: text;
   background-clip: text;
@@ -33,10 +34,10 @@ withDefaults(defineProps<{ active?: boolean }>(), { active: true })
 
 @keyframes text-shimmer {
   0% {
-    background-position: 200% 0;
+    background-position: 0% 0;
   }
   100% {
-    background-position: -200% 0;
+    background-position: 100% 0;
   }
 }
 

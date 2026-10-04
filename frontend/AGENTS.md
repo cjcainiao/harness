@@ -17,6 +17,12 @@
 - 全局状态用 Pinia，放 `src/stores/`
 - 引用统一用 `@` 别名（指向 `src/`）
 
+## 模块依赖
+- 页面级组件不跨模块依赖：`views/<模块A>/**` 不 import `views/<模块B>/**`，只用本模块组件和公共组件
+- 共享代码下沉到公共层：组件进 `src/components/`，工具进 `src/utils/`，请求进 `src/api/`，状态进 `src/stores/`
+- 公共层不反向依赖页面：`components/`、`utils/`、`api/`、`stores/` 里不出现 `@/views/`，页面模块的数据加工逻辑跟着页面走
+- 一个模块的删除边界 = `views/<模块>/` + `router/modules/<模块>.ts` + `api/<模块>.ts`，删完不留悬空引用
+
 ## 与后端对接
 - 前端请求路径统一带 `/api` 前缀
 - 开发模式走 Vite 代理（`vite.config.ts` 的 `server.proxy`）：`/api` 原样转发到 `http://127.0.0.1:8000`，不剥前缀（后端路由本身就挂在 `/api` 下）

@@ -262,19 +262,54 @@
                     <p v-if="!models.length" class="menu-heading">
                       {{ modelsLoading ? '加载中' : '未配置模型' }}
                     </p>
-                    <button
-                      v-for="model in models"
-                      :key="model.name"
-                      class="menu-option"
-                      :class="{ 'is-selected': selectedModelName === model.name }"
-                      type="button"
-                      role="menuitemradio"
-                      :aria-checked="selectedModelName === model.name"
-                      @click="chooseModel(model.name)"
-                    >
-                      <span>{{ model.display_name }}</span>
-                      <Check v-if="selectedModelName === model.name" :size="15" />
-                    </button>
+                    <div v-for="model in models" :key="model.name" class="model-row">
+                      <ElTooltip
+                        placement="left"
+                        effect="light"
+                        :fallback-placements="['left', 'right']"
+                        :offset="26"
+                        :show-after="140"
+                        :hide-after="0"
+                        :disabled="!canHover"
+                        :persistent="false"
+                        :popper-style="{
+                          padding: '0',
+                          width: '184px',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '10px',
+                          boxShadow: '0 6px 20px rgba(0, 0, 0, 0.1)',
+                        }"
+                      >
+                        <template #content>
+                          <ModelInfoTip :model="model" />
+                        </template>
+                        <button
+                          class="menu-option"
+                          :class="{ 'is-selected': selectedModelName === model.name }"
+                          type="button"
+                          role="menuitemradio"
+                          :aria-checked="selectedModelName === model.name"
+                          @click="chooseModel(model.name)"
+                        >
+                          <span>{{ model.display_name }}</span>
+                          <Check v-if="selectedModelName === model.name" :size="15" />
+                        </button>
+                      </ElTooltip>
+                      <button
+                        v-if="!canHover"
+                        class="model-info-toggle"
+                        type="button"
+                        :aria-label="`查看 ${model.display_name} 的配置`"
+                        :aria-expanded="infoModelName === model.name"
+                        @click="toggleModelInfo(model.name)"
+                      >
+                        <Info :size="15" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                  <!-- 触屏配置卡 -->
+                  <div v-if="!canHover && infoModel" class="model-info-inline">
+                    <ModelInfoTip :model="infoModel" />
                   </div>
                 </template>
                 <button
@@ -314,6 +349,7 @@ import {
   CirclePlay,
   ChevronDown,
   ChevronRight,
+  Info,
   Plus,
   ShieldCheck,
   Square,
@@ -335,6 +371,7 @@ import {
 } from '@/utils/fileUploadUtil'
 import AttachmentCard from '@/views/chat/components/attachment/AttachmentCard.vue'
 import EnergyField from './EnergyField.vue'
+import ModelInfoTip from './ModelInfoTip.vue'
 import SlashCommandMenu from './SlashCommandMenu.vue'
 
 const props = withDefaults(defineProps<{ isResponding?: boolean; streamLimited?: boolean }>(), {
@@ -520,10 +557,14 @@ function interpolateCurve(stops: number[], ratio: number): number {
 const models = ref<ModelInfo[]>([])
 const modelsLoading = ref(true)
 const selectedModelName = ref('')
+const infoModelName = ref('')
 const selectedModel = computed(
   () => models.value.find((model) => model.name === selectedModelName.value) ?? null,
 )
 const modelLabel = computed(() => selectedModel.value?.display_name ?? '未选择模型')
+const infoModel = computed(
+  () => models.value.find((model) => model.name === infoModelName.value) ?? null,
+)
 // 关闭固定存在，其余档位跟随所选模型
 const reasoningOptions = computed(() => {
   const model = selectedModel.value
@@ -588,6 +629,7 @@ const chatOptions = computed<ChatSendRequest>(() => {
 
 function prepareModelMenu() {
   showModelOptions.value = false
+  infoModelName.value = ''
   effortPreview.value = committed.value
 }
 
@@ -601,6 +643,15 @@ function chooseModel(name: string) {
   ElMessage.warning({
     message: `${modelLabel.value} 不支持 ${dropped} 推理强度，已切到${EFFORT_OFF}`,
     plain: true,
+  })
+}
+
+// 展开或收起配置卡
+function toggleModelInfo(name: string) {
+  infoModelName.value = infoModelName.value === name ? '' : name
+  if (!infoModelName.value) return
+  nextTick(() => {
+    document.querySelector('.model-info-inline')?.scrollIntoView({ block: 'nearest' })
   })
 }
 
@@ -635,13 +686,14 @@ function commitAt(position: number) {
 function armDragTimer() {
   window.clearTimeout(dragTimer)
   dragTimer = window.setTimeout(() => {
-    if (draggingNow) commitAt(effortPreview.value)
+    commitAt(effortPreview.value)
   }, 450)
 }
 
+// 更新预览位置并延时提交
 function previewOnly(event: Event) {
   effortPreview.value = Number((event.currentTarget as HTMLInputElement).value)
-  if (draggingNow) armDragTimer()
+  armDragTimer()
 }
 
 function beginDrag(event: PointerEvent) {
@@ -1128,6 +1180,36 @@ function onTextareaKeydown(event: KeyboardEvent): void {
 .menu-option svg {
   flex-shrink: 0;
 }
+.model-row {
+  display: flex;
+  align-items: stretch;
+}
+.model-row .menu-option {
+  flex: 1;
+  min-width: 0;
+}
+.model-info-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #8b9098;
+  cursor: pointer;
+}
+.model-info-toggle[aria-expanded='true'] {
+  background: #eef1f5;
+  color: #303133;
+}
+.model-info-inline {
+  margin: 2px 0 6px;
+  border: 1px solid #e9ebef;
+  border-radius: 9px;
+  overflow: hidden;
+}
 .model-next {
   margin-top: 6px;
   color: #4b5563;
@@ -1430,6 +1512,10 @@ function onTextareaKeydown(event: KeyboardEvent): void {
   .menu-option {
     min-height: 42px;
   }
+  .model-info-toggle {
+    width: 40px;
+    min-height: 42px;
+  }
   .effort-label {
     min-height: 28px;
     font-size: 12px;
@@ -1446,6 +1532,7 @@ function onTextareaKeydown(event: KeyboardEvent): void {
   .permission-trigger,
   .send-btn,
   .menu-option,
+  .model-info-toggle,
   .effort-label {
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
@@ -1478,7 +1565,8 @@ function onTextareaKeydown(event: KeyboardEvent): void {
   }
 }
 .tool-btn:active,
-.menu-option:active {
+.menu-option:active,
+.model-info-toggle:active {
   background: #e9ecf1;
 }
 .effort-label:active {
