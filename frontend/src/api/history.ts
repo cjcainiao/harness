@@ -49,6 +49,10 @@ export interface TurnItemInfo {
   arguments: Record<string, unknown> | string | null
   // 工具返回内容
   output: unknown
+  // 执行这段的子代理名称，主代理的段没有
+  subagent?: string | null
+  // 所属委派标识，宿主那条 task 段没有
+  delegation_id?: string | null
 }
 
 /** 一轮问答的令牌用量 */
@@ -61,6 +65,8 @@ export interface TurnUsageInfo {
   total_tokens: number
   // 命中缓存的输入令牌数
   cache_read_tokens: number | null
+  // 推理消耗的输出令牌数
+  reasoning_tokens: number | null
 }
 
 /** 一轮问答 */

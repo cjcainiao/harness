@@ -26,6 +26,8 @@ class TurnItemInfo(BaseModel):
     )
     arguments: dict[str, Any] | str | None = Field(default=None, description="工具入参")
     output: Any = Field(default=None, description="工具返回内容")
+    subagent: str | None = Field(default=None, description="执行这段的子代理名称")
+    delegation_id: str | None = Field(default=None, description="所属委派标识")
 
 
 # Token 用量
@@ -36,6 +38,7 @@ class UsageInfo(BaseModel):
     output_tokens: int = Field(description="输出 Token 数")
     total_tokens: int = Field(description="总 Token 数")
     cache_read_tokens: int | None = Field(default=None, description="缓存命中的输入 Token 数")
+    reasoning_tokens: int | None = Field(default=None, description="推理消耗的输出 Token 数")
 
 
 # 会话摘要

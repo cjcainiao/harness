@@ -114,6 +114,30 @@ export interface ToolErrorEvent extends ChatStreamEventBase {
   duration_ms?: number
 }
 
+/** 子代理委派事件，子事件字段与主代理同款 */
+export interface SubagentEvent extends ChatStreamEventBase {
+  type: 'subagent'
+  // 委派阶段
+  sub_type:
+    'start' | 'message_chunk' | 'tool_start' | 'tool_result' | 'tool_error' | 'finish' | 'error'
+  // 子代理名称
+  subagent: string
+  // 所属委派标识，即主代理那次工具调用的标识
+  delegation_id: string
+  // 工具名，工具类子事件才有
+  tool?: string
+  // 子代理自己的调用标识，工具类子事件才有
+  tool_call_id?: string
+  // 正文片段或工具结果，随委派阶段取其一
+  content?: unknown
+  // 调用参数，按字符数截断
+  arguments?: string
+  // 失败提示
+  message?: string
+  // 执行耗时
+  duration_ms?: number
+}
+
 /** 令牌用量 */
 export interface UsageEvent extends ChatStreamEventBase {
   type: 'usage'
@@ -151,6 +175,7 @@ export type ChatStreamEvent =
   | ToolStartEvent
   | ToolResultEvent
   | ToolErrorEvent
+  | SubagentEvent
   | UsageEvent
   | DoneEvent
   | ErrorEvent
@@ -176,6 +201,7 @@ const CHAT_STREAM_EVENT_TYPES = [
   'tool_start',
   'tool_result',
   'tool_error',
+  'subagent',
   'usage',
   'done',
   'error',

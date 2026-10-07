@@ -19,12 +19,15 @@ TEMPLATE = """{role}
 
 {tool_rules}
 
-{output_rules}{deferred_tools}{skills}"""
+{output_rules}{deferred_tools}{skills}{subagents}"""
 
 
 # 渲染主代理提示词，规则块无条件拼接
 def render_lead_agent_prompt(
-    role: str | None = None, deferred_tools: str = "", skills: str = ""
+    role: str | None = None,
+    deferred_tools: str = "",
+    skills: str = "",
+    subagents: str = "",
 ) -> str:
     return TEMPLATE.format(
         role=role or ROLE,
@@ -32,4 +35,5 @@ def render_lead_agent_prompt(
         output_rules=OUTPUT_RULES,
         deferred_tools=deferred_tools,
         skills=skills,
+        subagents=subagents,
     )

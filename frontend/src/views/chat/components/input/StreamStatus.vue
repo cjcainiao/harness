@@ -12,7 +12,14 @@ import DotsMatrix from '@/components/DotsMatrix.vue'
 import ShimmerText from '@/components/ShimmerText.vue'
 import type { StreamPhase } from '@/views/chat/components/message/messageTurn'
 
-const props = defineProps<{ active: boolean; phase: StreamPhase }>()
+const props = defineProps<{
+  active: boolean
+  phase: StreamPhase
+  // 委派进行中才有值
+  subagent?: string
+  // 子代理当前在跑的工具名
+  tool?: string
+}>()
 
 // 各阶段提示文案，加文案直接往这里补
 const statusTexts: Record<StreamPhase, string> = {
@@ -21,7 +28,13 @@ const statusTexts: Record<StreamPhase, string> = {
   tool: '正在执行工具…',
   streaming: '正在回复…',
 }
-const text = computed(() => statusTexts[props.phase])
+
+const text = computed(() => {
+  const { phase, subagent, tool } = props
+  if (subagent === undefined) return statusTexts[phase]
+  const action = phase === 'tool' && tool ? `正在执行 ${tool}…` : statusTexts[phase]
+  return `子 agent ${subagent} ${action}`
+})
 </script>
 
 <style scoped>

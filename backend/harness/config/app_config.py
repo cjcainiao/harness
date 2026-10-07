@@ -12,6 +12,7 @@ from pydantic import Field
 from harness.config.memory_config import memoryConfig
 from harness.config.model_config import ModelConfig
 from harness.config.skills_config import skillsConfig
+from harness.config.subagents_config import subagentsConfig
 from harness.config.system_config import systemConfig
 from harness.config.tool_config import ToolConfig
 
@@ -27,6 +28,7 @@ class AppConfig(ToolConfig):
     memory: memoryConfig = Field(default_factory=memoryConfig, description="记忆配置")
     models: list[ModelConfig] = Field(default_factory=list, description="模型配置")
     skills: skillsConfig = Field(default_factory=skillsConfig, description="技能配置")
+    subagents: subagentsConfig = Field(default_factory=subagentsConfig, description="子代理配置")
 
     # 解析配置文件路径，优先级：参数 > 环境变量 > 默认路径
     @classmethod

@@ -12,7 +12,7 @@
         ref="messageHandler"
         :thread-id="threadId"
         @responding-change="isResponding = $event"
-        @phase-change="streamPhase = $event"
+        @phase-change="streamStatus = $event"
         @edit-message="handleEditMessage"
         @fork-created="handleForkCreated"
         @ask-follow-up="handleFollowUp"
@@ -20,12 +20,18 @@
     </div>
     <!-- 底部固定区 -->
     <footer class="chat-bottom">
-      <StreamStatus :active="isResponding" :phase="streamPhase" />
+      <StreamStatus
+        :active="isResponding"
+        :phase="streamStatus.phase"
+        :subagent="streamStatus.subagent"
+        :tool="streamStatus.tool"
+      />
       <ChatInput
         ref="chatInput"
         :key="threadId"
         :is-responding="isResponding"
         :stream-limited="!chatSessions.hasStreamSlot()"
+        :history-turns="historyTurns"
         @send="handleSend"
         @stop="handleStop"
       />
@@ -66,7 +72,7 @@ import StreamStatus from './components/input/StreamStatus.vue'
 import UsageBar from './components/input/UsageBar.vue'
 import MessageEventHandler from './components/message/MessageEventHandler.vue'
 import SessionHeader from './components/message/SessionHeader.vue'
-import type { StreamPhase } from './components/message/messageTurn'
+import type { StreamStatusInfo } from './components/message/messageTurn'
 
 withDefaults(defineProps<{ sidebarOpen?: boolean }>(), { sidebarOpen: false })
 const emit = defineEmits<{ 'toggle-sidebar': [] }>()
@@ -84,7 +90,7 @@ const threadId = computed(() => {
 const messageHandler = ref<InstanceType<typeof MessageEventHandler> | null>(null)
 const chatInput = ref<InstanceType<typeof ChatInput> | null>(null)
 const isResponding = ref(false)
-const streamPhase = ref<StreamPhase>('idle')
+const streamStatus = ref<StreamStatusInfo>({ phase: 'idle' })
 const sessionTitle = computed(
   () => chatSessions.sessions.find((session) => session.id === threadId.value)?.title ?? '新对话',
 )
@@ -92,6 +98,8 @@ const sessionTitle = computed(
 watch(sessionTitle, (title) => setPageTitle(title), { immediate: true })
 // 按当前 thread 汇总累计 Token 用量
 const sessionUsage = computed(() => chatSessions.getUsage(threadId.value))
+// 本会话已有的轮数，换模型时决定要不要先提示影响
+const historyTurns = computed(() => chatSessions.getTurns(threadId.value).length)
 
 // 抽屉里嵌入的页面，为空即关闭
 const drawerPage = ref<Component | null>(null)

@@ -374,10 +374,19 @@ import EnergyField from './EnergyField.vue'
 import ModelInfoTip from './ModelInfoTip.vue'
 import SlashCommandMenu from './SlashCommandMenu.vue'
 
-const props = withDefaults(defineProps<{ isResponding?: boolean; streamLimited?: boolean }>(), {
-  isResponding: false,
-  streamLimited: false,
-})
+const props = withDefaults(
+  defineProps<{
+    isResponding?: boolean
+    streamLimited?: boolean
+    // 当前会话已有的对话轮数，换模型时要不要先提示
+    historyTurns?: number
+  }>(),
+  {
+    isResponding: false,
+    streamLimited: false,
+    historyTurns: 0,
+  },
+)
 const emit = defineEmits<{
   send: [message: { content: string; files: File[]; request: ChatSendRequest }]
   stop: []
@@ -633,10 +642,21 @@ function prepareModelMenu() {
   effortPreview.value = committed.value
 }
 
-// 换模型后档位可能不再受支持
+// 换模型：带历史的会话提示影响，档位不受支持要降档
 function chooseModel(name: string) {
-  selectedModelName.value = name
   isModelMenuOpen.value = false
+  const target = models.value.find((model) => model.name === name)
+  if (!target || name === selectedModelName.value) return
+
+  selectedModelName.value = name
+  // 空会话没有历史要带，不用提示
+  if (props.historyTurns > 0) {
+    ElMessage.warning({
+      message: `已切到 ${target.display_name}：${props.historyTurns} 轮旧对话会带进新模型，提示词缓存作废`,
+      plain: true,
+      duration: 5000,
+    })
+  }
   if (reasoningOptions.value.includes(reasoningEffort.value)) return
   const dropped = reasoningEffort.value
   reasoningEffort.value = EFFORT_OFF

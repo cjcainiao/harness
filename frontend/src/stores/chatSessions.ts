@@ -1,15 +1,17 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { reactive, ref } from 'vue'
 import { streamChat } from '@/api/chat'
 import type { ChatSendRequest, ChatStreamRequest } from '@/api/chat'
 import { fetchThreadTurns, fetchThreads } from '@/api/history'
 import type { ThreadCursor, ThreadInfo, TurnInfo } from '@/api/history'
 import { mapTurns, toTimestamp } from '@/views/chat/components/message/historyMapper'
-import { createTurnRuntime } from '@/views/chat/components/message/messageTurn'
+import { createTurnRuntime, isRunningTool } from '@/views/chat/components/message/messageTurn'
 import type {
   ChatTurn,
+  DelegationBucket,
   ToolItem,
   TurnFeedback,
+  TurnItem,
   TurnRuntime,
   TurnUsage,
 } from '@/views/chat/components/message/messageTurn'
@@ -318,6 +320,11 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
       : getTurns(threadId).find((item) => item.id === turnId)
   }
 
+  // 某次委派收到的子项
+  function getDelegation(turnId: string, delegationId: string): DelegationBucket | undefined {
+    return runtimes.get(turnId)?.delegations.get(delegationId)
+  }
+
   // 该会话是否还有未收尾的轮次
   function isThreadResponding(id: string): boolean {
     return getTurns(id).some((turn) => turn.status === 'streaming')
@@ -528,6 +535,71 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     else item.durationMs ??= elapsedSince(item.startedAt)
   }
 
+  // 一次委派一个桶，边界事件先到就先建
+  function ensureBucket(
+    runtime: TurnRuntime,
+    delegationId: string,
+    subagent: string,
+  ): DelegationBucket {
+    const existing = runtime.delegations.get(delegationId)
+    if (existing) return existing
+    // 桶要包成响应式：子项状态是原地改的，不包不会触发更新
+    const bucket: DelegationBucket = {
+      subagent,
+      items: reactive<TurnItem[]>([]),
+      runtime: createTurnRuntime(),
+    }
+    runtime.delegations.set(delegationId, bucket)
+    return bucket
+  }
+
+  // 子代理事件收进委派桶，子项形状与主代理同款，处理函数直接复用
+  function handleSubagent(turn: ChatTurn, runtime: TurnRuntime, event: MessageEvent): void {
+    const delegationId = readToolIdentity(event.delegation_id)
+    const subagent = readToolIdentity(event.subagent)
+    if (delegationId === undefined || subagent === undefined) return
+
+    // 主代理正文不在委派期间续写
+    closeMessageChunk(runtime)
+
+    // 边界事件也标宿主，子代理名挂在宿主那条上
+    const hostId = runtime.toolItemsByCallId.get(delegationId)
+    const hostItem =
+      hostId === undefined ? undefined : turn.items.find((item) => item.id === hostId)
+    if (hostItem?.type === 'tool') hostItem.subagent = subagent
+
+    const subType = readToolIdentity(event.sub_type)
+    if (subType === 'start' || subType === 'finish' || subType === 'error') return
+
+    const bucket = ensureBucket(runtime, delegationId, subagent)
+    const scope = bucket.runtime
+    // 序号仍用本轮计数器，桶内桶外的显示项不撞号
+    scope.nextItemId = runtime.nextItemId
+    // 子项列表当成一个轮，直接喂给同款处理函数
+    const view = { items: bucket.items } as ChatTurn
+
+    switch (subType) {
+      case 'message_chunk':
+        handleMessageChunk(view, scope, event)
+        break
+      case 'tool_start':
+        closeMessageChunk(scope)
+        handleToolStart(view, scope, event)
+        break
+      case 'tool_result':
+        closeMessageChunk(scope)
+        handleToolResult(view, scope, event)
+        break
+      case 'tool_error':
+        closeMessageChunk(scope)
+        handleToolError(view, scope, event)
+        break
+      default:
+        break
+    }
+    runtime.nextItemId = scope.nextItemId
+  }
+
   // 连续到达的推理片段合并进同一显示项，被正文或工具调用打断后另起一项
   function handleReasoningChunk(turn: ChatTurn, runtime: TurnRuntime, event: MessageEvent): void {
     if (typeof event.content !== 'string' || event.content.length === 0) return
@@ -570,7 +642,20 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
       typeof inputDetails === 'object' && inputDetails !== null && !Array.isArray(inputDetails)
         ? readTokenCount((inputDetails as Record<string, unknown>).cache_read)
         : null
-    if (input === null && output === null && total === null && cacheRead === null) return
+    const outputDetails = counts.output_token_details
+    const reasoning =
+      typeof outputDetails === 'object' && outputDetails !== null && !Array.isArray(outputDetails)
+        ? readTokenCount((outputDetails as Record<string, unknown>).reasoning)
+        : null
+    if (
+      input === null &&
+      output === null &&
+      total === null &&
+      cacheRead === null &&
+      reasoning === null
+    ) {
+      return
+    }
 
     const previous: TurnUsage = turn.usage ?? { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
     const next: TurnUsage = {
@@ -581,6 +666,10 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
         cacheRead === null && previous.cacheReadTokens === undefined
           ? undefined
           : (previous.cacheReadTokens ?? 0) + (cacheRead ?? 0),
+      reasoningTokens:
+        reasoning === null && previous.reasoningTokens === undefined
+          ? undefined
+          : (previous.reasoningTokens ?? 0) + (reasoning ?? 0),
     }
     turn.usage = next
     // 会话总量只累加本次新增，翻页加载过的轮次不重复计
@@ -591,13 +680,19 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     )
   }
 
-  // 未收尾的工具按失败显示，避免结束后一直转圈
-  function closeUnfinishedTools(turn: ChatTurn): void {
-    for (const item of turn.items) {
-      if (item.type !== 'tool') continue
-      if (item.status !== 'preparing' && item.status !== 'running') continue
-      item.status = 'error'
-      item.durationMs ??= elapsedSince(item.startedAt)
+  // 未收尾的工具按失败显示
+  function closeUnfinishedTools(turn: ChatTurn, runtime: TurnRuntime): void {
+    // 委派桶里的子工具也在跑，收尾要连着扫
+    const itemLists = [
+      turn.items,
+      ...[...runtime.delegations.values()].map((bucket) => bucket.items),
+    ]
+    for (const items of itemLists) {
+      for (const item of items) {
+        if (item.type !== 'tool' || !isRunningTool(item)) continue
+        item.status = 'error'
+        item.durationMs ??= elapsedSince(item.startedAt)
+      }
     }
   }
 
@@ -617,9 +712,9 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
   }
 
   // 结束状态写回历史，避免重开窗口后持续显示加载中
-  function handleDone(turn: ChatTurn): void {
+  function handleDone(turn: ChatTurn, runtime: TurnRuntime): void {
     turn.status = 'completed'
-    closeUnfinishedTools(turn)
+    closeUnfinishedTools(turn, runtime)
     markUnreadWhenUnwatched(turn)
     syncResponding(turn.threadId)
   }
@@ -628,7 +723,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     const message = typeof event.message === 'string' && event.message ? event.message : '请求失败'
     turn.items.push({ id: runtime.nextItemId++, type: 'error', content: message })
     turn.status = 'failed'
-    closeUnfinishedTools(turn)
+    closeUnfinishedTools(turn, runtime)
     markUnreadWhenUnwatched(turn)
     // 正看着这条会话才弹提示，后台收尾只留错误段
     if (isWatched(turn.threadId)) pendingNotice.value = { threadId: turn.threadId, message }
@@ -669,12 +764,16 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
         closeMessageChunk(runtime)
         handleToolError(turn, runtime, value)
         break
+      case 'subagent':
+        closeMessageChunk(runtime)
+        handleSubagent(turn, runtime, value)
+        break
       case 'usage':
         handleUsage(turn, runtime, value)
         break
       case 'done':
         closeMessageChunk(runtime)
-        handleDone(turn)
+        handleDone(turn, runtime)
         break
       case 'error':
         closeMessageChunk(runtime)
@@ -758,6 +857,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     setTurns,
     prependTurns,
     getTurns,
+    getDelegation,
     getUsage,
     addSessionTokens,
     startTurn,

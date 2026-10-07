@@ -34,6 +34,11 @@
                 :tools="item.tools"
                 :expanded="turn.status === 'streaming'"
               />
+              <SubagentMessage
+                v-else-if="item.type === 'delegation_group'"
+                :host="item.host"
+                :parts="item.parts"
+              />
               <MessageError v-else :content="item.content" />
             </div>
             <TurnActions
@@ -82,34 +87,22 @@ import MessageChunk from './MessageChunk.vue'
 import MessageError from './MessageError.vue'
 import MessageLocator from './MessageLocator.vue'
 import MessageReasoning from './MessageReasoning.vue'
+import SubagentMessage from './SubagentMessage.vue'
 import ToolCallMessage from './ToolCallMessage.vue'
 import TurnActions from './TurnActions.vue'
 import UserMessage from './UserMessage.vue'
-import type {
-  ChatTurn,
-  ErrorItem,
-  MessageChunkItem,
-  ReasoningItem,
-  StreamPhase,
-  ToolItem,
-  TurnItem,
-} from './messageTurn'
+import { groupItems, isRunningTool } from './messageTurn'
+import type { ChatTurn, StreamStatusInfo, ToolItem, TurnItem } from './messageTurn'
 
 const props = defineProps<{ threadId: string }>()
 const emit = defineEmits<{
   'responding-change': [active: boolean]
-  'phase-change': [phase: StreamPhase]
+  'phase-change': [status: StreamStatusInfo]
   'edit-message': [content: string]
   'fork-created': [threadId: string]
   'ask-follow-up': [question: string]
 }>()
 const chatSessions = useChatSessionsStore()
-
-interface ToolGroupItem {
-  id: number
-  type: 'tool_group'
-  tools: ToolItem[]
-}
 
 const scrollContainer = ref<HTMLElement | null>(null)
 // 定位号只在本视图内分配
@@ -140,50 +133,53 @@ const isResponding = computed(() => turns.value.some((turn) => turn.status === '
 watch(isResponding, (active) => emit('responding-change', active), { immediate: true })
 
 // 输入区提示用的当前流式阶段
-const streamPhase = computed<StreamPhase>(() => {
+const streamStatus = computed<StreamStatusInfo>(() => {
+  // 委派桶登记在普通 Map 里，靠事件计数保证能重算
+  void chatSessions.streamTick(props.threadId)
   const active = [...turns.value].reverse().find((turn) => turn.status === 'streaming')
-  if (!active) return 'idle'
+  if (!active) return { phase: 'idle' }
 
   const last = active.items[active.items.length - 1]
-  if (last?.type === 'tool' && (last.status === 'preparing' || last.status === 'running'))
-    return 'tool'
-  return active.items.length ? 'streaming' : 'waiting'
-})
-watch(streamPhase, (phase) => emit('phase-change', phase), { immediate: true })
-
-// 只合并相邻工具，正文与推理块保持原有顺序
-function groupItems(
-  renderItems: TurnItem[],
-): Array<MessageChunkItem | ReasoningItem | ErrorItem | ToolGroupItem> {
-  const items: Array<MessageChunkItem | ReasoningItem | ErrorItem | ToolGroupItem> = []
-
-  for (const item of renderItems) {
-    if (item.type !== 'tool') {
-      items.push(item)
-      continue
-    }
-
-    const lastItem = items[items.length - 1]
-    if (lastItem?.type === 'tool_group') {
-      lastItem.tools.push(item)
-    } else {
-      items.push({ id: item.id, type: 'tool_group', tools: [item] })
-    }
+  if (last?.type === 'tool' && isRunningTool(last)) {
+    // 委派进行中，提示跟着子代理最新那一步走
+    return last.subagent === undefined ? { phase: 'tool' } : delegationStatus(active.id, last)
   }
+  return { phase: active.items.length ? 'streaming' : 'waiting' }
+})
+watch(streamStatus, (status) => emit('phase-change', status), { immediate: true })
 
-  return items
+// 子代理最新那一步是工具就说工具名，否则当它在组织回复
+function delegationStatus(turnId: string, host: ToolItem): StreamStatusInfo {
+  const parts = delegationParts(turnId, host)
+  const step = parts?.[parts.length - 1]
+  const subagent = host.subagent
+  if (!step) return { phase: 'tool', subagent }
+  if (step.type === 'tool' && isRunningTool(step)) {
+    return { phase: 'tool', subagent, tool: step.tool || undefined }
+  }
+  return { phase: 'streaming', subagent }
 }
 
-const displayTurns = computed(() =>
-  turns.value.map((turn) => ({
+// 实时路径的子项在委派桶里，按宿主的调用标识取
+function delegationParts(turnId: string, host: ToolItem): TurnItem[] | undefined {
+  const delegationId = host.toolCallId
+  if (delegationId === undefined) return undefined
+  const bucket = chatSessions.getDelegation(turnId, delegationId)
+  // 交一份新数组，不让调用方碰到桶内实体
+  return bucket?.items.slice()
+}
+
+const displayTurns = computed(() => {
+  void chatSessions.streamTick(props.threadId)
+  return turns.value.map((turn) => ({
     ...turn,
     locatorId: locatorIdOf(turn.id),
-    displayItems: groupItems(turn.items),
+    displayItems: groupItems(turn.items, (host) => delegationParts(turn.id, host)),
     lastItemId: turn.items[turn.items.length - 1]?.id ?? -1,
     visibleFollowUps:
       turn.followUpQuestions?.map((question) => question.trim()).filter(Boolean) ?? [],
-  })),
-)
+  }))
+})
 // 预览正文摘要，只取回复文字、不含代码块
 function locatorExcerpt(turn: ChatTurn): string {
   const reply = turn.items

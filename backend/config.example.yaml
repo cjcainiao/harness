@@ -127,7 +127,7 @@ tools:
     enabled: true # 是否启用
     aliases: [读取文件, 查看文件] # 查找别名
     settings: {
-      default_max_bytes: 100000 # 最大读取字节数
+      default_max_lines: 2000 # 单次返回的最大行数
     } # 工具额外配置
 
   - name: list_dir # 工具名称
@@ -139,11 +139,20 @@ tools:
       default_max_entries: 200 # 最大返回条目数
     } # 工具额外配置
 
+  - name: create_file # 工具名称
+    group: system # 所属工具组
+    use: harness.tools.system.file_operations:create_file # 工具实现
+    enabled: true # 是否启用
+    aliases: [创建文件, 新建文件] # 查找别名
+
   - name: edit_file # 工具名称
     group: system # 所属工具组
     use: harness.tools.system.file_operations:edit_file # 工具实现
     enabled: true # 是否启用
-    aliases: [编辑文件, 写入文件] # 查找别名
+    aliases: [编辑文件, 替换文本] # 查找别名
+    settings: {
+      default_max_bytes: 2000000 # 局部替换允许的最大文件字节数
+    } # 工具额外配置
 
   - name: delete_file # 工具名称
     group: system # 所属工具组
@@ -166,6 +175,12 @@ tools:
     enabled: true # 是否启用
     aliases: [字数统计, 统计字数] # 查找别名
 
+  - name: task # 工具名称
+    group: system # 所属工具组
+    use: harness.subagents.task_tool:task # 工具实现
+    enabled: true # 是否启用
+    aliases: [委派子代理, 分派任务] # 查找别名
+
 # 工具查找配置
 tool_search:
   enabled: true
@@ -180,3 +195,20 @@ skills:
   name_pattern: '^[a-z0-9][a-z0-9-]*$' # 技能名字符集
   max_in_prompt: 20      # 写入提示词的技能名单条数上限
   description_limit: 1024 # 描述字数上限
+
+# 子代理配置
+subagents:
+  enabled: true          # 是否启用子代理
+  defaults:              # 子代理共用默认值
+    model: inherit       # 使用的模型，inherit 跟随主代理，不填用默认模型
+    max_turns: 20        # 模型调用次数上限
+    timeout_seconds: 180 # 单次委派超时时间（秒）
+    tools: inherit       # 可用工具名单，[] 表示一个都不给
+    disallowed_tools: [task] # 禁用工具名单
+  items:                 # 子代理列表
+    - name: general-purpose # 子代理名称
+      use: harness.subagents.builtins.general_purpose:GENERAL_PURPOSE # 子代理定义实现
+      model: inherit # 本条使用的模型
+      max_turns: 30 # 模型调用次数上限
+      tools: [read_file, list_dir, word_count, current_time] # 本条可用工具名单
+      disallowed_tools: [tool_search] # 本条禁用工具名单

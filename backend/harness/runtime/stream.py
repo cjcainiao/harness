@@ -10,7 +10,6 @@ from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware
-from langchain_core.messages import ToolMessage
 from langgraph.errors import GraphBubbleUp
 
 from harness.agents.lead_agent import Tool, create_lead_agent
@@ -18,6 +17,7 @@ from harness.config.app_config import get_app_config
 from harness.core.logger import get_logger
 from harness.models.factory import ReasoningEffort
 from harness.runtime.checkpointer import get_checkpointer
+from harness.runtime.events import parse_message_events
 from harness.storage import history
 from harness.storage.recorder import TurnRecorder
 
@@ -65,88 +65,6 @@ def _with_source(
         event["namespace"] = list(namespace)
 
     return event
-
-
-# 解析模型流式消息
-def _parse_message_events(
-    message: Any,
-    metadata: dict[str, Any] | None,
-    namespace: Sequence[str] | None,
-) -> list[dict[str, Any]]:
-    # 工具结果由工具调用中间件发送
-    if isinstance(message, ToolMessage):
-        return []
-
-    events: list[dict[str, Any]] = []
-
-    try:
-        content_blocks = message.content_blocks
-    except (AttributeError, TypeError, ValueError):
-        content_blocks = []
-
-    for block in content_blocks:
-        if not isinstance(block, dict):
-            continue
-
-        block_type = block.get("type")
-        if block_type in {"text", "text-plain"}:
-            content = block.get("text")
-            if isinstance(content, str) and content:
-                events.append(
-                    _with_source(
-                        {"type": "message_chunk", "content": content},
-                        metadata,
-                        namespace,
-                    )
-                )
-        elif block_type == "reasoning":
-            content = block.get("reasoning")
-            if isinstance(content, str) and content:
-                events.append(
-                    _with_source(
-                        {"type": "reasoning_chunk", "content": content},
-                        metadata,
-                        namespace,
-                    )
-                )
-        elif block_type in {"tool_call_chunk", "server_tool_call_chunk"}:
-            events.append(
-                _with_source(
-                    {
-                        "type": "tool_call_chunk",
-                        "tool": block.get("name"),
-                        "tool_call_id": block.get("id"),
-                        "index": block.get("index"),
-                        "arguments": block.get("args"),
-                    },
-                    metadata,
-                    namespace,
-                )
-            )
-
-    # 兼容未提供标准内容块的模型
-    if not events:
-        content = getattr(message, "content", None)
-        if isinstance(content, str) and content:
-            events.append(
-                _with_source(
-                    {"type": "message_chunk", "content": content},
-                    metadata,
-                    namespace,
-                )
-            )
-
-    usage = getattr(message, "usage_metadata", None)
-    if usage:
-        events.append(
-            _with_source(
-                {"type": "usage", "usage": usage},
-                metadata,
-                namespace,
-            )
-        )
-
-    return events
 
 
 # 开启历史轮次，失败时返回 None 表示本轮不入库
@@ -211,7 +129,7 @@ async def stream_agent(
             config=run_config,
             durability=get_app_config().memory.durability,
             stream_mode=["messages", "custom"],
-            subgraphs=True,
+            subgraphs=False,
             version="v2",
         ):
             stream_type = chunk.get("type")
@@ -220,11 +138,8 @@ async def stream_agent(
 
             if stream_type == "messages":
                 message_chunk, metadata = data
-                for event in _parse_message_events(
-                    message_chunk,
-                    metadata,
-                    namespace,
-                ):
+                for payload in parse_message_events(message_chunk):
+                    event = _with_source(payload, metadata, namespace)
                     track(event)
                     yield _encode_sse(event)
 

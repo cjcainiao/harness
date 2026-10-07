@@ -2,7 +2,7 @@
 <template>
   <details class="reasoning" :open="open" @toggle="onToggle">
     <summary class="reasoning-header">
-      <span class="reasoning-chevron"><ChevronDown :size="12" /></span>
+      <span v-if="!hideChevron" class="reasoning-chevron"><ChevronDown :size="12" /></span>
       <ShimmerText :active="streaming">思考过程</ShimmerText>
       <span v-if="timerVisible" class="reasoning-timer" :class="{ 'is-live': streaming }">
         {{ timerText }}
@@ -15,8 +15,9 @@
 
 <script setup lang="ts">
 import { ChevronDown } from 'lucide-vue-next'
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import ShimmerText from '@/components/ShimmerText.vue'
+import { useLiveTimer } from '@/utils/turnTimerUtil'
 
 const props = defineProps<{
   content: string
@@ -24,6 +25,8 @@ const props = defineProps<{
   durationMs?: number
   streaming: boolean
   expanded: boolean
+  /** 子代理卡片内不再画折叠三角 */
+  hideChevron?: boolean
 }>()
 
 // 本轮回复流式期间保持展开，结束后收起
@@ -36,15 +39,7 @@ const body = ref<HTMLElement | null>(null)
 const BOTTOM_EDGE_PX = 24
 
 // 流式期间用本地时钟刷新已思考时长
-const nowTick = ref(Date.now())
-let timerId: number | null = null
-
-// 清除计时器
-function stopTimer(): void {
-  if (timerId === null) return
-  window.clearInterval(timerId)
-  timerId = null
-}
+const nowTick = useLiveTimer(() => props.streaming)
 
 watch(
   () => props.expanded,
@@ -67,24 +62,13 @@ watch(
   },
 )
 
+// 这段推理结束，正文回到开头
 watch(
   () => props.streaming,
   (active) => {
-    stopTimer()
-    if (!active) {
-      // 这段推理结束，正文回到开头
-      if (body.value) body.value.scrollTop = 0
-      return
-    }
-    nowTick.value = Date.now()
-    timerId = window.setInterval(() => {
-      nowTick.value = Date.now()
-    }, 200)
+    if (!active && body.value) body.value.scrollTop = 0
   },
-  { immediate: true },
 )
-
-onUnmounted(stopTimer)
 
 const elapsedMs = computed(() => {
   if (!props.streaming) return props.durationMs ?? 0

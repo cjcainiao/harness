@@ -39,6 +39,12 @@
           <div class="token-row">
             <span>输出</span><span>{{ formatTokens(usage.outputTokens) }}</span>
           </div>
+          <div v-if="usage.cacheReadTokens !== undefined" class="token-row">
+            <span>缓存命中</span><span>{{ formatTokens(usage.cacheReadTokens) }}</span>
+          </div>
+          <div v-if="usage.reasoningTokens !== undefined" class="token-row">
+            <span>推理</span><span>{{ formatTokens(usage.reasoningTokens) }}</span>
+          </div>
         </template>
         <p v-else class="token-empty">暂无本轮用量数据</p>
       </div>

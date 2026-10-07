@@ -26,17 +26,24 @@ function toUsage(usage: TurnUsageInfo | null): TurnUsage | undefined {
     outputTokens: usage.output_tokens,
     totalTokens: usage.total_tokens,
     cacheReadTokens: usage.cache_read_tokens ?? undefined,
+    reasoningTokens: usage.reasoning_tokens ?? undefined,
   }
 }
 
 // 渲染段转显示项，序号即数组下标
 function toTurnItem(item: TurnItemInfo, index: number): TurnItem {
+  // 四种段共用同一对委派标记
+  const marks = {
+    subagent: item.subagent ?? undefined,
+    delegationId: item.delegation_id ?? undefined,
+  }
   if (item.kind === 'reasoning') {
     return {
       id: index,
       type: 'reasoning',
       content: item.content ?? '',
       durationMs: item.duration_ms ?? undefined,
+      ...marks,
     }
   }
   if (item.kind === 'tool') {
@@ -49,6 +56,7 @@ function toTurnItem(item: TurnItemInfo, index: number): TurnItem {
       output: item.output ?? undefined,
       durationMs: item.duration_ms ?? undefined,
       toolCallId: item.tool_call_id ?? undefined,
+      ...marks,
     }
   }
   if (item.kind === 'error') {
@@ -56,12 +64,14 @@ function toTurnItem(item: TurnItemInfo, index: number): TurnItem {
       id: index,
       type: 'error',
       content: item.content ?? '',
+      ...marks,
     }
   }
   return {
     id: index,
     type: 'message_chunk',
     content: item.content ?? '',
+    ...marks,
   }
 }
 
