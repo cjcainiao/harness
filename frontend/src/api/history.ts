@@ -79,8 +79,8 @@ export interface TurnInfo {
   seq: number
   // 提问原文
   question: string
-  // 轮次状态，取值 completed / failed
-  status: string
+  // 轮次状态
+  status: 'streaming' | 'completed' | 'failed' | 'interrupted'
   // 提问时间，ISO-8601 UTC
   created_at: string
   // 渲染段，顺序即显示顺序

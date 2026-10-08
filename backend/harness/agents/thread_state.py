@@ -9,3 +9,6 @@ from langchain.agents import AgentState
 class ThreadState(AgentState):
     # 本轮上传的文件
     uploaded_files: NotRequired[list[dict[str, Any]] | None]
+
+    # 会话工作空间路径
+    workspace_path: NotRequired[str | None]

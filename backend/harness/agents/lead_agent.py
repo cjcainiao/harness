@@ -40,7 +40,7 @@ def create_lead_agent(
 
     # 根据本次请求动态创建模型
     model = create_chat_model(
-        name=model_name,
+        model_name=model_name,
         thinking_enabled=thinking_enabled,
         reasoning_effort=reasoning_effort,
         app_config=config,

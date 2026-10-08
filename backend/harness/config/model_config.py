@@ -1,6 +1,6 @@
 # 模型配置
 
-from typing import Self
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -9,18 +9,25 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 class ModelConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    name: str = Field(description="模型名称")
+    model_name: str = Field(min_length=1, description="实际模型名称")
     display_name: str | None = Field(default=None, description="模型显示名称")
     description: str | None = Field(default=None, description="模型描述")
     provider: str = Field(description="模型厂商")
     use: str = Field(description="模型实现类")
-    model: str = Field(description="服务商模型名称")
     supports_thinking: bool = Field(default=False, description="是否支持推理")
     reasoning_levels: list[str] = Field(default_factory=list, description="模型支持的推理强度")
     when_thinking_enabled: dict | None = Field(default=None, description="启用推理时使用的模型参数")
     when_thinking_disabled: dict | None = Field(default=None, description="关闭推理时使用的模型参数")
     supports_vision: bool = Field(default=False, description="是否支持视觉")
     context_window: int | None = Field(default=None, gt=0, description="模型上下文长度")
+
+    # 旧字段不能混入模型构造参数
+    @model_validator(mode="before")
+    @classmethod
+    def reject_legacy_model_fields(cls, value: Any) -> Any:
+        if isinstance(value, dict) and ("name" in value or "model" in value):
+            raise ValueError("模型配置已统一使用 model_name，不能再使用 name 或 model")
+        return value
 
     # 清理并校验模型支持的档位
     @field_validator("reasoning_levels")

@@ -14,6 +14,7 @@ from harness.storage.db import connect_history_db, open_history_db
 TURN_STREAMING = "streaming"
 TURN_COMPLETED = "completed"
 TURN_FAILED = "failed"
+TURN_INTERRUPTED = "interrupted"
 
 # 会话标题取的提问字数
 TITLE_MAX_CHARS = 40
@@ -40,6 +41,9 @@ UPDATE chat_turn
 SET status = ?, items_json = ?, usage_json = ?
 WHERE id = ?
 """
+
+# 启动时把上次进程遗留的未完成轮次标为中断
+SQL_INTERRUPT_UNFINISHED_TURNS = "UPDATE chat_turn SET status = ? WHERE status = ?"
 
 # 取轮次所属会话与已落库用量，用于算增量
 SQL_SELECT_TURN_USAGE = """
@@ -142,6 +146,19 @@ def start_turn(thread_id: str, question: str) -> str:
         conn.close()
 
     return turn_id
+
+
+# 进程重启后，旧的流式任务不会继续执行
+def interrupt_unfinished_turns() -> None:
+    conn = connect_history_db()
+    try:
+        with conn:
+            conn.execute(
+                SQL_INTERRUPT_UNFINISHED_TURNS,
+                (TURN_INTERRUPTED, TURN_STREAMING),
+            )
+    finally:
+        conn.close()
 
 
 # 覆盖写入本轮进度或收尾状态，用量增量累加进会话

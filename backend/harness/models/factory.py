@@ -13,7 +13,7 @@ type ReasoningEffort = str
 
 # 不传入模型构造函数的配置字段
 _MODEL_METADATA_FIELDS = {
-    "name",
+    "model_name",
     "display_name",
     "description",
     "provider",
@@ -48,43 +48,43 @@ def resolve_model_class(class_path: str) -> type[BaseChatModel]:
     return model_class
 
 
-# 按配置名称或实际模型名称获取模型配置，第一个模型为默认模型
-def _get_model_config(config: AppConfig, name: str | None) -> ModelConfig:
+# 按实际模型名称获取配置，第一个模型为默认模型
+def _get_model_config(config: AppConfig, model_name: str | None) -> ModelConfig:
     if not config.models:
         raise ValueError("未配置任何模型")
 
-    if name is None:
+    if model_name is None:
         return config.models[0]
 
-    model_config = next((item for item in config.models if name in (item.name, item.model)), None)
+    model_config = next((item for item in config.models if item.model_name == model_name), None)
     if model_config is None:
-        raise ValueError(f"模型配置不存在：{name}")
+        raise ValueError(f"模型配置不存在：{model_name}")
     return model_config
 
 
 # 校验模型与推理参数
 def validate_model_options(
-    name: str | None,
+    model_name: str | None,
     thinking_enabled: bool,
     reasoning_effort: ReasoningEffort | None,
     *,
     app_config: AppConfig | None = None,
 ) -> ModelConfig:
     config = app_config or get_app_config()
-    model_config = _get_model_config(config, name)
+    model_config = _get_model_config(config, model_name)
 
     if thinking_enabled and not model_config.supports_thinking:
-        raise ValueError(f"模型 {model_config.name} 不支持推理")
+        raise ValueError(f"模型 {model_config.model_name} 不支持推理")
     if reasoning_effort is not None:
         if not thinking_enabled:
             raise ValueError("设置推理程度前必须启用推理")
         if reasoning_effort not in model_config.reasoning_levels:
             supported = "、".join(model_config.reasoning_levels) or "无"
-            raise ValueError(f"模型 {model_config.name} 不支持推理强度 {reasoning_effort}，可选：{supported}")
+            raise ValueError(f"模型 {model_config.model_name} 不支持推理强度 {reasoning_effort}，可选：{supported}")
 
         model_class = resolve_model_class(model_config.use)
         if not callable(getattr(model_class, "reasoning_model_kwargs", None)):
-            raise ValueError(f"模型 {model_config.name} 的适配类未实现推理强度参数映射")
+            raise ValueError(f"模型 {model_config.model_name} 的适配类未实现推理强度参数映射")
 
     return model_config
 
@@ -102,7 +102,7 @@ def _merge_model_settings(settings: dict[str, Any], updates: dict[str, Any]) -> 
 
 # 根据模型配置动态创建模型实例
 def create_chat_model(
-    name: str | None = None,
+    model_name: str | None = None,
     thinking_enabled: bool = False,
     reasoning_effort: ReasoningEffort | None = None,
     *,
@@ -110,13 +110,15 @@ def create_chat_model(
     model_overrides: dict[str, Any] | None = None,
 ) -> BaseChatModel:
     config = app_config or get_app_config()
-    model_config = validate_model_options(name, thinking_enabled, reasoning_effort, app_config=config)
+    model_config = validate_model_options(model_name, thinking_enabled, reasoning_effort, app_config=config)
     model_class = resolve_model_class(model_config.use)
 
     model_settings = model_config.model_dump(
         exclude_none=True,
         exclude=_MODEL_METADATA_FIELDS,
     )
+    # 配置统一用 model_name，适配类仍接收 model 参数
+    model_settings["model"] = model_config.model_name
 
     if model_overrides:
         _merge_model_settings(

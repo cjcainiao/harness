@@ -16,12 +16,11 @@ router = APIRouter(prefix="/config", tags=["系统配置"])
 class ModelInfo(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(description="模型名称")
+    model_name: str = Field(description="实际模型名称")
     display_name: str = Field(description="模型显示名称")
     description: str | None = Field(default=None, description="模型描述")
     provider: str = Field(description="模型厂商")
     use: str = Field(description="模型实现类")
-    model: str = Field(description="服务商模型名称")
     supports_thinking: bool = Field(default=False, description="是否支持推理")
     reasoning_levels: list[str] = Field(default_factory=list, description="模型支持的推理强度")
     supports_vision: bool = Field(default=False, description="是否支持视觉")
@@ -35,12 +34,11 @@ async def get_models() -> Result[list[ModelInfo]]:
 
     models = [
         ModelInfo(
-            name=model.name,
-            display_name=model.display_name or model.name,
+            model_name=model.model_name,
+            display_name=model.display_name or model.model_name,
             description=model.description,
             provider=model.provider,
             use=model.use,
-            model=model.model,
             supports_thinking=model.supports_thinking,
             reasoning_levels=model.reasoning_levels,
             supports_vision=model.supports_vision,
@@ -51,14 +49,19 @@ async def get_models() -> Result[list[ModelInfo]]:
     return Result.success(models)
 
 # 修改模型配置
-@router.put("/models/{name}", summary="修改模型配置", response_model=Result)
-async def update_model(model: ModelConfig):
+@router.put("/models/{model_name}", summary="修改模型配置", response_model=Result)
+async def update_model(model_name: str, model: ModelConfig):
     config_path = AppConfig.resolve_config_path()
     data = load_yaml_keep_comment(config_path)
     models = data.get("models") or []
-    target = next((m for m in models if m.get("name") == model.name), None)
+    target = next((m for m in models if m.get("model_name") == model_name), None)
     if target is None:
-        return Result.error(code=404, message=f"模型不存在：{model.name}")
+        return Result.error(code=404, message=f"模型不存在：{model_name}")
+
+    if model.model_name != model_name and any(
+        m.get("model_name") == model.model_name for m in models
+    ):
+        return Result.error(code=409, message=f"模型已存在：{model.model_name}")
 
     # 合并本次传入的字段，未传的保留原值
     target.update(model.model_dump(exclude_none=True, exclude_unset=True))
@@ -71,9 +74,9 @@ async def create_model(model: ModelConfig):
     config_path = AppConfig.resolve_config_path()
     data = load_yaml_keep_comment(config_path)
     models = data.get("models") or []
-    exists = any(m.get("name") == model.name for m in models)
+    exists = any(m.get("model_name") == model.model_name for m in models)
     if exists:
-        return Result.error(code=409, message=f"模型已存在：{model.name}")
+        return Result.error(code=409, message=f"模型已存在：{model.model_name}")
 
     models.append(model.model_dump(exclude_none=True))
     data["models"] = models
@@ -83,13 +86,13 @@ async def create_model(model: ModelConfig):
 
 # 删除模型配置
 @router.delete("/models", summary="删除模型配置", response_model=Result)
-async def delete_model(name: str):
+async def delete_model(model_name: str):
     config_path = AppConfig.resolve_config_path()
     data = load_yaml_keep_comment(config_path)
     models = data.get("models") or []
-    remaining = [m for m in models if m.get("name") != name]
+    remaining = [m for m in models if m.get("model_name") != model_name]
     if len(remaining) == len(models):
-        return Result.error(code=404, message=f"模型不存在：{name}")
+        return Result.error(code=404, message=f"模型不存在：{model_name}")
 
     data["models"] = remaining
     dump_yaml(config_path, data)

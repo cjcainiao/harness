@@ -24,7 +24,7 @@ const infoRows = computed(() => {
   const context = model.context_window
   return [
     { label: '厂商', value: model.provider },
-    { label: '接口模型', value: model.model },
+    { label: '接口模型', value: model.model_name },
     { label: '上下文', value: context === null ? '' : formatContext(context) },
     { label: '推理强度', value: model.supports_thinking ? model.reasoning_levels.join(' / ') : '' },
     { label: '视觉', value: model.supports_vision ? '支持' : '不支持' },

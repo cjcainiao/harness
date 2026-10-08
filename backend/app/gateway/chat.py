@@ -19,7 +19,7 @@ class ChatRequest(BaseModel):
 
     message: str = Field(min_length=1, max_length=20_000, description="用户消息")
     thread_id: str | None = Field(default=None, min_length=1, max_length=128, description="会话ID")
-    model_name: str | None = Field(default=None, min_length=1, max_length=100, description="模型配置名称或实际模型名称")
+    model_name: str | None = Field(default=None, min_length=1, max_length=100, description="实际模型名称")
     thinking_enabled: bool = Field(default=False, description="是否启用推理")
     reasoning_effort: ReasoningEffort | None = Field(
         default=None, min_length=1, max_length=32, description="推理程度，取值由所选模型决定"

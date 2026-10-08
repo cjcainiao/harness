@@ -110,7 +110,8 @@ async def stream_agent(
         if event.get("type") in MILESTONE_TYPES:
             save(history.TURN_STREAMING)
 
-    final_status = history.TURN_COMPLETED
+    # 只有代理完整跑完才算完成；取消或控制流中断保留为中断
+    final_status = history.TURN_INTERRUPTED
 
     try:
         agent = create_lead_agent(
@@ -156,6 +157,7 @@ async def stream_agent(
                 track(event)
                 yield _encode_sse(event)
 
+        final_status = history.TURN_COMPLETED
         yield _encode_sse({"type": "done", "thread_id": thread_id})
 
     except asyncio.CancelledError:

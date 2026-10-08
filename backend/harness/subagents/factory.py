@@ -71,7 +71,7 @@ def create_subagent(
     app = app_config or get_app_config()
 
     model = create_chat_model(
-        name=resolve_model_name(config, model_name),
+        model_name=resolve_model_name(config, model_name),
         thinking_enabled=thinking_enabled,
         reasoning_effort=reasoning_effort,
         app_config=app,

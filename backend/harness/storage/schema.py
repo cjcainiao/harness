@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS chat_turn (
     seq INTEGER NOT NULL,
     -- 提问原文
     question TEXT NOT NULL,
-    -- 状态，取值 streaming / completed / failed
+    -- 状态，取值 streaming / completed / failed / interrupted
     status TEXT NOT NULL DEFAULT 'streaming',
     -- 提问时间，ISO-8601 UTC
     created_at TEXT NOT NULL,

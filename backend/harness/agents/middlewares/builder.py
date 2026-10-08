@@ -6,6 +6,7 @@ from langchain.agents.middleware import AgentMiddleware
 
 from harness.agents.middlewares.deferred_tool_filter import DeferredToolFilterMiddleware
 from harness.agents.middlewares.model_debug import ModelDebugMiddleware
+from harness.agents.middlewares.thread_data import ThreadDataMiddleware
 from harness.agents.middlewares.tool_call import ToolCallMiddleware
 from harness.config.app_config import get_app_config
 
@@ -16,6 +17,10 @@ def build_agent_middleware(
 ) -> list[AgentMiddleware]:
     config = get_app_config()
     items = list(middleware or ())
+
+    # 每轮运行前写入会话工作空间路径
+    if not any(isinstance(item, ThreadDataMiddleware) for item in items):
+        items.insert(0, ThreadDataMiddleware())
 
     # 懒加载开启时过滤模型可见工具
     if config.tool_search.get("enabled") and not any(

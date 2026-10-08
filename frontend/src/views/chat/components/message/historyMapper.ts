@@ -8,9 +8,10 @@ export function toTimestamp(value: string): number {
   return Number.isNaN(time) ? Date.now() : time
 }
 
-// 恢复后只认终态，未收尾的轮次按已完成显示
+// 历史页不接旧流，未收尾的轮次按中断显示
 function toTurnStatus(status: string): TurnStatus {
-  return status === 'failed' ? 'failed' : 'completed'
+  if (status === 'completed' || status === 'failed') return status
+  return 'interrupted'
 }
 
 // 未收尾的工具按失败显示，避免恢复后一直转圈

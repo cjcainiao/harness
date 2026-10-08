@@ -124,7 +124,7 @@ import {
   SlidersHorizontal,
   SquarePen,
 } from 'lucide-vue-next'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useChatSessionsStore } from '@/stores/chatSessions'
 
 import ConversationList from './ConversationList.vue'
@@ -140,6 +140,7 @@ interface SettingOption {
 
 const props = withDefaults(defineProps<{ sidebarVisible?: boolean }>(), { sidebarVisible: true })
 const emit = defineEmits<{ 'collapse-sidebar': [] }>()
+const route = useRoute()
 const router = useRouter()
 const chatSessions = useChatSessionsStore()
 
@@ -236,7 +237,10 @@ function selectSetting(id: string): void {
 }
 
 function startNewConversation(): void {
-  const threadId = chatSessions.createSession()
+  const currentId = route.query.thread_id
+  const threadId = chatSessions.getOrCreateEmptySession(
+    typeof currentId === 'string' && currentId.trim() ? currentId : undefined,
+  )
   void router.push({ name: 'chat-index', query: { thread_id: threadId } })
 }
 </script>

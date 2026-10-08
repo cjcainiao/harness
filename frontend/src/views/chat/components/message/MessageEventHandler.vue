@@ -41,6 +41,7 @@
               />
               <MessageError v-else :content="item.content" />
             </div>
+            <MessageError v-if="turn.status === 'interrupted'" content="回复未完成" />
             <TurnActions
               v-if="turn.status === 'completed' && turn.items.length"
               :items="turn.items"

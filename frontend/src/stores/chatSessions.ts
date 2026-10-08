@@ -108,6 +108,8 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
   const historyLoaded = new Set<string>()
   // 服务端返回过的会话标识，用来认出本地新建未落库的会话
   const loadedThreadIds = new Set<string>()
+  // 只复用本地创建且尚未提问的会话
+  const localSessionIds = new Set<string>()
 
   function markUnread(id: string): void {
     unreadThreadIds.value.add(id)
@@ -154,8 +156,48 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
   function createSession(): string {
     const id = createUuid()
     ensureSession(id)
+    localSessionIds.add(id)
     markHistoryLoaded(id)
     return id
+  }
+
+  // 当前页面也是空会话时优先复用，并清理此前遗留的重复空会话
+  function getOrCreateEmptySession(currentThreadId?: string): string {
+    const current = sessions.value.find((session) => session.id === currentThreadId)
+    const currentEmpty =
+      current && !loadedThreadIds.has(current.id) && getTurns(current.id).length === 0
+        ? current
+        : undefined
+    const empty = sessions.value.filter(
+      (session) =>
+        !loadedThreadIds.has(session.id) &&
+        (session.id === currentEmpty?.id ||
+          localSessionIds.has(session.id) ||
+          historyLoaded.has(session.id)) &&
+        getTurns(session.id).length === 0,
+    )
+    const kept = currentEmpty || empty[0]
+    if (!kept) return createSession()
+
+    // 旧版已生成的空会话可能不在 localSessionIds 中，按已加载的本地空会话一起去重
+    const redundant = new Set(
+      empty.filter((session) => session.id !== kept.id).map((session) => session.id),
+    )
+    if (redundant.size) {
+      sessions.value = sessions.value.filter((session) => !redundant.has(session.id))
+      for (const id of redundant) {
+        localSessionIds.delete(id)
+        historyLoaded.delete(id)
+        unreadThreadIds.value.delete(id)
+        delete turnsByThread.value[id]
+        delete turnsCursor.value[id]
+        delete turnsEnded.value[id]
+        delete turnsLoading.value[id]
+        delete streamTicks.value[id]
+      }
+    }
+    localSessionIds.add(kept.id)
+    return kept.id
   }
 
   // 用首条消息生成会话标题
@@ -404,6 +446,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
       items: [],
     })
     turnThreads.set(turnId, threadId)
+    localSessionIds.delete(threadId)
     runtimes.set(turnId, createTurnRuntime())
     syncResponding(threadId)
     bumpTick(threadId)
@@ -719,6 +762,14 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     syncResponding(turn.threadId)
   }
 
+  // 主动停止或连接中断，保留已有回复但不算完成
+  function handleInterrupted(turn: ChatTurn, runtime: TurnRuntime): void {
+    turn.status = 'interrupted'
+    closeUnfinishedTools(turn, runtime)
+    markUnreadWhenUnwatched(turn)
+    syncResponding(turn.threadId)
+  }
+
   function handleError(turn: ChatTurn, runtime: TurnRuntime, event: MessageEvent): void {
     const message = typeof event.message === 'string' && event.message ? event.message : '请求失败'
     turn.items.push({ id: runtime.nextItemId++, type: 'error', content: message })
@@ -775,6 +826,10 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
         closeMessageChunk(runtime)
         handleDone(turn, runtime)
         break
+      case 'interrupted':
+        closeMessageChunk(runtime)
+        handleInterrupted(turn, runtime)
+        break
       case 'error':
         closeMessageChunk(runtime)
         handleError(turn, runtime, value)
@@ -797,7 +852,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
         onEvent: (event) => handleEvent(event, turnId),
         onClose: (completed) => {
           // 没收到结束事件说明连接被截断
-          if (!completed) handleEvent({ type: 'error', message: '连接中断' }, turnId)
+          if (!completed) handleEvent({ type: 'interrupted' }, turnId)
         },
       })
     } catch {
@@ -827,7 +882,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     for (const turn of getTurns(threadId)) {
       if (turn.status !== 'streaming') continue
       activeStreams.get(turn.id)?.abort()
-      handleEvent({ type: 'done', thread_id: threadId }, turn.id)
+      handleEvent({ type: 'interrupted' }, turn.id)
     }
   }
 
@@ -840,6 +895,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     streamTicks,
     pendingNotice,
     createSession,
+    getOrCreateEmptySession,
     ensureSession,
     setViewing,
     markUnread,

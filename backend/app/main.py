@@ -12,6 +12,7 @@ from harness.config.app_config import get_app_config
 from harness.core.logger import get_logger, shutdown_logging
 from harness.runtime.checkpointer import init_checkpointer, shutdown_checkpointer
 from harness.runtime.db_path import resolve_db_path
+from harness.storage import history
 from harness.storage.db import init_history_db
 
 
@@ -26,6 +27,7 @@ async def lifespan(app: FastAPI):
     try:
         # 表结构已是最新时只做一次存在性检查
         db_path = await init_history_db()
+        history.interrupt_unfinished_turns()
         logger.info("历史库已就绪", path=str(db_path))
 
         # 检查点写磁盘文件，进程重启后同一会话仍能延续

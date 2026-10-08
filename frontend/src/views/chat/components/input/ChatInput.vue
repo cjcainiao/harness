@@ -262,7 +262,7 @@
                     <p v-if="!models.length" class="menu-heading">
                       {{ modelsLoading ? '加载中' : '未配置模型' }}
                     </p>
-                    <div v-for="model in models" :key="model.name" class="model-row">
+                    <div v-for="model in models" :key="model.model_name" class="model-row">
                       <ElTooltip
                         placement="left"
                         effect="light"
@@ -285,14 +285,14 @@
                         </template>
                         <button
                           class="menu-option"
-                          :class="{ 'is-selected': selectedModelName === model.name }"
+                          :class="{ 'is-selected': selectedModelName === model.model_name }"
                           type="button"
                           role="menuitemradio"
-                          :aria-checked="selectedModelName === model.name"
-                          @click="chooseModel(model.name)"
+                          :aria-checked="selectedModelName === model.model_name"
+                          @click="chooseModel(model.model_name)"
                         >
                           <span>{{ model.display_name }}</span>
-                          <Check v-if="selectedModelName === model.name" :size="15" />
+                          <Check v-if="selectedModelName === model.model_name" :size="15" />
                         </button>
                       </ElTooltip>
                       <button
@@ -300,8 +300,8 @@
                         class="model-info-toggle"
                         type="button"
                         :aria-label="`查看 ${model.display_name} 的配置`"
-                        :aria-expanded="infoModelName === model.name"
-                        @click="toggleModelInfo(model.name)"
+                        :aria-expanded="infoModelName === model.model_name"
+                        @click="toggleModelInfo(model.model_name)"
                       >
                         <Info :size="15" aria-hidden="true" />
                       </button>
@@ -568,11 +568,11 @@ const modelsLoading = ref(true)
 const selectedModelName = ref('')
 const infoModelName = ref('')
 const selectedModel = computed(
-  () => models.value.find((model) => model.name === selectedModelName.value) ?? null,
+  () => models.value.find((model) => model.model_name === selectedModelName.value) ?? null,
 )
 const modelLabel = computed(() => selectedModel.value?.display_name ?? '未选择模型')
 const infoModel = computed(
-  () => models.value.find((model) => model.name === infoModelName.value) ?? null,
+  () => models.value.find((model) => model.model_name === infoModelName.value) ?? null,
 )
 // 关闭固定存在，其余档位跟随所选模型
 const reasoningOptions = computed(() => {
@@ -630,7 +630,7 @@ const chatOptions = computed<ChatSendRequest>(() => {
   const effort = reasoningEffort.value
   const levels = selectedModel.value?.reasoning_levels ?? []
   return {
-    model_name: selectedModel.value?.model || undefined,
+    model_name: selectedModel.value?.model_name || undefined,
     thinking_enabled: effort !== EFFORT_OFF,
     reasoning_effort: levels.includes(effort) ? effort : undefined,
   }
@@ -643,12 +643,12 @@ function prepareModelMenu() {
 }
 
 // 换模型：带历史的会话提示影响，档位不受支持要降档
-function chooseModel(name: string) {
+function chooseModel(modelName: string) {
   isModelMenuOpen.value = false
-  const target = models.value.find((model) => model.name === name)
-  if (!target || name === selectedModelName.value) return
+  const target = models.value.find((model) => model.model_name === modelName)
+  if (!target || modelName === selectedModelName.value) return
 
-  selectedModelName.value = name
+  selectedModelName.value = modelName
   // 空会话没有历史要带，不用提示
   if (props.historyTurns > 0) {
     ElMessage.warning({
@@ -667,8 +667,8 @@ function chooseModel(name: string) {
 }
 
 // 展开或收起配置卡
-function toggleModelInfo(name: string) {
-  infoModelName.value = infoModelName.value === name ? '' : name
+function toggleModelInfo(modelName: string) {
+  infoModelName.value = infoModelName.value === modelName ? '' : modelName
   if (!infoModelName.value) return
   nextTick(() => {
     document.querySelector('.model-info-inline')?.scrollIntoView({ block: 'nearest' })
@@ -781,7 +781,7 @@ onMounted(() => document.addEventListener('pointerdown', dismissCommandMenuOutsi
 async function loadModels() {
   try {
     models.value = await fetchModels()
-    selectedModelName.value = models.value[0]?.name ?? ''
+    selectedModelName.value = models.value[0]?.model_name ?? ''
   } catch (error) {
     ElMessage.error({
       message: error instanceof Error ? error.message : '获取模型列表失败',

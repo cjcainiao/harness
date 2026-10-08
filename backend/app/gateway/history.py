@@ -61,15 +61,10 @@ class TurnInfo(BaseModel):
     thread_id: str = Field(description="所属会话")
     seq: int = Field(description="会话内序号")
     question: str = Field(description="提问原文")
-    status: str = Field(description="轮次状态，取值 completed / failed")
+    status: str = Field(description="轮次状态，取值 streaming / completed / failed / interrupted")
     created_at: str = Field(description="提问时间，ISO-8601 UTC")
     items: list[TurnItemInfo] = Field(description="渲染段，顺序即显示顺序")
     usage: UsageInfo | None = Field(default=None, description="本轮累计用量")
-
-
-# 未收尾的轮次按已完成返回
-def _terminal_status(status: str) -> str:
-    return history.TURN_COMPLETED if status == history.TURN_STREAMING else status
 
 
 # 会话列表，游标指向上一页最后一条
@@ -114,7 +109,7 @@ async def get_thread_turns(
                 thread_id=row["thread_id"],
                 seq=row["seq"],
                 question=row["question"],
-                status=_terminal_status(row["status"]),
+                status=row["status"],
                 created_at=row["created_at"],
                 items=[TurnItemInfo(**item) for item in row["items"]],
                 usage=UsageInfo(**row["usage"]) if row["usage"] else None,
