@@ -1,6 +1,6 @@
 <!--附件卡片-->
 <template>
-  <div class="attachment-card" role="listitem" :title="name">
+  <div class="attachment-card" role="listitem" :title="name" :aria-busy="uploading">
     <img
       v-if="previewUrl"
       class="attachment-thumb"
@@ -22,11 +22,21 @@
       :alt="`${name} 的类型图标`"
     />
     <div class="attachment-info">
-      <span class="attachment-name">{{ name }}</span>
+      <a
+        v-if="downloadUrl && !previewUrl"
+        class="attachment-name attachment-name-link"
+        :href="downloadUrl"
+        :aria-label="`下载 ${name}`"
+      >{{ name }}</a>
+      <span v-else class="attachment-name">{{ name }}</span>
       <span v-if="size !== undefined" class="attachment-size">{{ formatSize(size) }}</span>
     </div>
     <!-- 上传中遮罩：灰黑铺满卡片，顺时针擦除 -->
     <span v-if="sweep" class="attachment-sweep" aria-hidden="true" />
+    <span v-if="uploading" class="attachment-uploading" aria-label="上传中">
+      <LoaderCircle :size="16" aria-hidden="true" />
+      上传中
+    </span>
     <button
       v-if="removable"
       class="attachment-remove"
@@ -45,7 +55,7 @@
 </template>
 
 <script setup lang="ts">
-import { X } from 'lucide-vue-next'
+import { LoaderCircle, X } from 'lucide-vue-next'
 import { ref } from 'vue'
 import ImagePreview from '@/components/ImagePreview.vue'
 import { resolveFileIconUrl } from '@/utils/fileIconUtil'
@@ -56,12 +66,16 @@ withDefaults(
     name: string
     /** 图片缩略图地址，有才可点开放大 */
     previewUrl?: string | null
+    /** 后端预览或下载地址 */
+    downloadUrl?: string
     /** 文件字节数，传了才显示 */
     size?: number
     /** 显示移除按钮 */
     removable?: boolean
     /** 播放上传退场遮罩 */
     sweep?: boolean
+    /** 上传进行中 */
+    uploading?: boolean
   }>(),
   { removable: false, sweep: false },
 )
@@ -165,6 +179,42 @@ function formatSize(size: number): string {
   );
   pointer-events: none;
   animation: file-sweep-out 1.4s linear forwards;
+}
+.attachment-name-link {
+  color: inherit;
+  text-decoration: none;
+}
+.attachment-name-link:focus-visible {
+  outline: 2px solid #a5b6da;
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  .attachment-name-link:hover {
+    text-decoration: underline;
+  }
+}
+.attachment-uploading {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: rgba(32, 34, 37, 0.78);
+  color: #fff;
+  font-size: 11px;
+  line-height: 16px;
+  pointer-events: none;
+}
+.attachment-uploading svg {
+  animation: upload-spin 1s linear infinite;
+}
+@keyframes upload-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 @keyframes file-sweep-out {
   from {

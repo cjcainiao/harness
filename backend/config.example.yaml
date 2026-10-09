@@ -23,6 +23,7 @@ system:
   db_path: data/harness.db   # 历史库文件路径，相对路径按 backend 解析
   db_busy_timeout_ms: 5000   # 写冲突时的锁等待上限（毫秒），0 表示不等待
   workspace_dir: data/workspaces   # 会话工作空间根目录，相对路径按后端项目根解析
+  upload_max_bytes: 20971520   # 单个上传文件的最大字节数
 
 # 记忆配置
 memory:
@@ -159,18 +160,12 @@ tools:
 
   - name: tool_search # 工具名称
     group: system # 所属工具组
-    use: harness.tools.tool_search:tool_search # 工具实现
+    use: harness.tools.system.tool_search:tool_search # 工具实现
     enabled: true # 是否启用
     aliases: [查找工具, 搜索工具] # 查找别名
     settings: {
       default_max_results: 5 # 本工具最多返回命中条数
     } # 工具额外配置
-
-  - name: word_count # 工具名称
-    group: text # 所属工具组
-    use: harness.tools.text.word_count:word_count # 工具实现
-    enabled: true # 是否启用
-    aliases: [字数统计, 统计字数] # 查找别名
 
   - name: task # 工具名称
     group: system # 所属工具组
@@ -178,10 +173,11 @@ tools:
     enabled: true # 是否启用
     aliases: [委派子代理, 分派任务] # 查找别名
 
-# 工具查找配置
-tool_search:
-  enabled: true
-  max_results: 5
+  - name: word_count # 工具名称
+    group: text # 所属工具组
+    use: harness.tools.text.word_count:word_count # 工具实现
+    enabled: true # 是否启用
+    aliases: [字数统计, 统计字数] # 查找别名
 
 # 技能配置
 skills:

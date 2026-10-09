@@ -1,6 +1,7 @@
-// 服务端历史还原成界面渲染用的 turn
+// 历史轮次映射
 import type { TurnInfo, TurnItemInfo, TurnUsageInfo } from '@/api/history'
-import type { ChatTurn, ToolItem, TurnItem, TurnStatus, TurnUsage } from './messageTurn'
+import { isInlineUploadImage, uploadPreviewUrl, type UploadedFileInfo } from '@/api/uploads'
+import type { ChatAttachment, ChatTurn, ToolItem, TurnItem, TurnStatus, TurnUsage } from './messageTurn'
 
 // ISO-8601 时间转时间戳
 export function toTimestamp(value: string): number {
@@ -8,18 +9,33 @@ export function toTimestamp(value: string): number {
   return Number.isNaN(time) ? Date.now() : time
 }
 
-// 历史页不接旧流，未收尾的轮次按中断显示
+// 附件卡片映射
+export function toChatAttachments(files: UploadedFileInfo[]): ChatAttachment[] {
+  return files.map((file) => {
+    const url = uploadPreviewUrl(file.preview_url)
+    return {
+      id: file.file_id,
+      name: file.name,
+      type: file.mime_type,
+      size: file.size,
+      previewUrl: isInlineUploadImage(file.mime_type) ? url : undefined,
+      downloadUrl: url,
+    }
+  })
+}
+
+// 历史轮次状态
 function toTurnStatus(status: string): TurnStatus {
   if (status === 'completed' || status === 'failed') return status
   return 'interrupted'
 }
 
-// 未收尾的工具按失败显示，避免恢复后一直转圈
+// 历史工具状态
 function toToolStatus(status: ToolItem['status'] | null): ToolItem['status'] {
   return status === 'success' || status === 'error' ? status : 'error'
 }
 
-// 用量字段转成界面字段名
+// 用量字段映射
 function toUsage(usage: TurnUsageInfo | null): TurnUsage | undefined {
   if (!usage) return undefined
   return {
@@ -31,9 +47,9 @@ function toUsage(usage: TurnUsageInfo | null): TurnUsage | undefined {
   }
 }
 
-// 渲染段转显示项，序号即数组下标
+// 历史渲染段映射
 function toTurnItem(item: TurnItemInfo, index: number): TurnItem {
-  // 四种段共用同一对委派标记
+  // 委派标记
   const marks = {
     subagent: item.subagent ?? undefined,
     delegationId: item.delegation_id ?? undefined,
@@ -81,7 +97,8 @@ export function mapTurns(threadId: string, turns: TurnInfo[]): ChatTurn[] {
   return turns.map((turn) => ({
     id: turn.turn_id,
     threadId,
-    question: turn.question,
+    question: turn.question.content,
+    attachments: toChatAttachments(turn.question.attachments),
     createdAt: toTimestamp(turn.created_at),
     status: toTurnStatus(turn.status),
     items: turn.items.map(toTurnItem),

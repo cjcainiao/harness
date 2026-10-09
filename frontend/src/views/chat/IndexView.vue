@@ -29,6 +29,7 @@
       <ChatInput
         ref="chatInput"
         :key="threadId"
+        :thread-id="threadId"
         :is-responding="isResponding"
         :stream-limited="!chatSessions.hasStreamSlot()"
         :history-turns="historyTurns"
@@ -63,6 +64,7 @@ import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { ChatSendRequest } from '@/api/chat'
+import type { UploadedFileInfo } from '@/api/uploads'
 import { useChatSessionsStore } from '@/stores/chatSessions'
 import { setPageTitle } from '@/utils/pageTitleUtil'
 import { createUuid } from '@/utils/uuidUtil'
@@ -146,14 +148,18 @@ onUnmounted(() => {
 })
 
 // 登记会话后创建本次提问的 turn
-function handleSend(message: { content: string; files: File[]; request: ChatSendRequest }) {
+function handleSend(message: {
+  content: string
+  attachments: UploadedFileInfo[]
+  request: ChatSendRequest
+}) {
   chatSessions.ensureSession(threadId.value)
   chatSessions.titleFromMessage(
     threadId.value,
-    message.content.trim() || message.files[0]?.name || '',
+    message.content.trim() || message.attachments[0]?.name || '',
   )
   messageHandler.value?.startChatTurn(message.content, {
-    files: message.files,
+    attachments: message.attachments,
     request: message.request,
   })
 }
@@ -174,7 +180,7 @@ function handleForkCreated(id: string): void {
 function handleFollowUp(question: string): void {
   if (isResponding.value || !chatSessions.hasStreamSlot()) return
   const options: ChatSendRequest = chatInput.value?.chatOptions ?? {}
-  handleSend({ content: question, files: [], request: options })
+  handleSend({ content: question, attachments: [], request: options })
 }
 </script>
 

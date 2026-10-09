@@ -18,7 +18,7 @@ from harness.models.factory import ReasoningEffort, create_chat_model
 from harness.subagents.registry import load_subagent_configs, subagents_section
 from harness.skills.loader import load_skills, skills_section
 from harness.tools.loader import load_default_tools
-from harness.tools.tool_search import build_registry, deferred_tools_section
+from harness.tools.system.tool_search import build_registry, deferred_tools_section
 
 
 Tool = BaseTool | Callable[..., Any] | dict[str, Any]
@@ -46,24 +46,25 @@ def create_lead_agent(
         app_config=config,
     )
 
-    # 默认工具与传入工具共存，同名时传入的优先
+    # 工具绑定
     bound_tools = {tool.name: tool for tool in load_default_tools()}
 
-    # 懒加载开启时注册非默认组工具
-    if config.tool_search.get("enabled"):
+    # 懒加载工具注册
+    search_enabled = "tool_search" in bound_tools
+    if search_enabled:
         bound_tools.update((tool.name, tool) for tool in build_registry())
 
     bound_tools.update((tool.name, tool) for tool in tools or ())
 
-    # 渲染系统提示词，自定义内容只替换身份段
+    # 系统提示词渲染
     prompt = render_lead_agent_prompt(
         role=system_prompt,
-        deferred_tools=deferred_tools_section(),
+        deferred_tools=deferred_tools_section() if search_enabled else "",
         skills=skills_section(load_skills()),
         subagents=subagents_section(load_subagent_configs()),
     )
 
-    # 统一组装模型、工具、中间件、系统提示词与检查点
+    # 主代理组装
     return create_agent(
         model=model,
         tools=list(bound_tools.values()),

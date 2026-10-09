@@ -113,6 +113,7 @@ export interface ChatAttachment {
   type: string
   size: number
   previewUrl?: string
+  downloadUrl?: string
 }
 
 /** 单次对话中所有模型调用的累计用量 */

@@ -18,6 +18,7 @@
         :key="attachment.id"
         :name="attachment.name"
         :preview-url="attachment.previewUrl"
+        :download-url="attachment.downloadUrl"
         :size="attachment.size"
       />
     </div>

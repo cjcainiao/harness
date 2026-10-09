@@ -117,8 +117,9 @@ def count_files(path: str, max_entries: int | None = None) -> str:
     aliases: [统计文件数, 清点目录, 文件计数] # 查找别名
 ```
 
-- `aliases` 必填，`tool_search` 是整段包含匹配、不是语义搜索：给 2-4 字的核心能力词，多个写法都列上。
-- 懒加载只在 `tool_search.enabled: true` 时参与装配；关掉时非默认组工具不建图、模型也看不到。
+- `aliases` 必填，`tool_search` 的普通查询会用不区分大小写的正则匹配工具名、说明和别名；`select:` 按准确工具名选取，`+` 可先限定工具名。别名写能力词及常见说法，方便关键词命中。
+- 懒加载只在 `tools` 中 `tool_search` 注册项的 `enabled: true` 时参与装配；关掉时非默认组工具不建图、模型也看不到。
+- `tool_search` 命中后把工具名写入 `ThreadState.promoted`；同一会话的检查点会保留开放名单，工具目录变化后需要重新检索。
 - 新开一个主题族时：建 `backend/harness/tools/<组>/__init__.py`（一行包说明），并在 `config.example.yaml` 与 `config.yaml` 的 `tool_groups:` 补一行分组名，两处 group 值要和它对上。
 
 ## 改 config.yaml 的注意
@@ -132,7 +133,7 @@ cd backend
 uv run python -c "from app.main import app; print('import ok')"
 
 # 懒加载组：确认进了目录
-uv run python -c "from harness.tools.tool_search import build_registry, registry_entries; build_registry(); print([e.name for e in registry_entries()])"
+uv run python -c "from harness.tools.system.tool_search import build_registry, registry_entries; build_registry(); print([e.name for e in registry_entries()])"
 
 # 默认组：确认直接绑定得到
 uv run python -c "from harness.tools.loader import load_default_tools; print([t.name for t in load_default_tools()])"

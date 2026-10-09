@@ -51,14 +51,29 @@ class ToolCallMiddleware(AgentMiddleware):
             **self._identity(request),
             "duration_ms": round((time.perf_counter() - started_at) * 1000),
         }
-        if isinstance(result, ToolMessage):
-            payload["type"] = "tool_error" if result.status == "error" else "tool_result"
-            payload["content"] = result.content
+        message = result if isinstance(result, ToolMessage) else None
+        # 状态更新中的工具消息
+        if isinstance(result, Command) and isinstance(result.update, dict):
+            messages = result.update.get("messages")
+            if isinstance(messages, list):
+                message = next(
+                    (
+                        item
+                        for item in messages
+                        if isinstance(item, ToolMessage)
+                        and item.tool_call_id == request.tool_call["id"]
+                    ),
+                    None,
+                )
+
+        if message is not None:
+            payload["type"] = "tool_error" if message.status == "error" else "tool_result"
+            payload["content"] = message.content
         else:
             payload["type"] = "tool_result"
         self._emit(request, payload)
 
-    # 发送工具异常事件，返回 error ToolMessage 回传给模型
+    # 工具调用异常
     def _handle_error(
         self, request: ToolCallRequest, error: Exception, started_at: float
     ) -> ToolMessage:

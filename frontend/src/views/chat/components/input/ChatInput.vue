@@ -57,8 +57,11 @@
           :key="fileKey(item.file)"
           :name="item.file.name"
           :preview-url="item.previewUrl"
+          :download-url="item.uploaded ? uploadPreviewUrl(item.uploaded.preview_url) : undefined"
+          :size="item.file.size"
+          :uploading="item.status === 'uploading'"
           removable
-          sweep
+          :sweep="item.status === 'uploading'"
           @remove="removeFile(index)"
         />
       </div>
@@ -330,7 +333,7 @@
             :class="{ 'is-responding': isResponding }"
             type="button"
             :aria-label="sendButtonLabel"
-            :disabled="!isResponding && (!text.trim() || streamLimited)"
+            :disabled="!isResponding && (!text.trim() || streamLimited || hasUploadingFiles)"
             @click="onPrimaryAction"
           >
             <Square v-if="isResponding" :size="12" fill="currentColor" :stroke-width="1.5" />
@@ -359,9 +362,16 @@ import { ElMessage, ElPopover, ElTooltip } from 'element-plus'
 import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/popover/style/css'
 import 'element-plus/es/components/tooltip/style/css'
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import type { ChatSendRequest } from '@/api/chat'
 import { fetchModels, type ModelInfo } from '@/api/config'
+import {
+  deleteUpload,
+  isInlineUploadImage,
+  uploadFile,
+  uploadPreviewUrl,
+  type UploadedFileInfo,
+} from '@/api/uploads'
 import { useDragScroll } from '@/utils/dragScrollUtil'
 import {
   describeRejectedUploadFiles,
@@ -376,6 +386,7 @@ import SlashCommandMenu from './SlashCommandMenu.vue'
 
 const props = withDefaults(
   defineProps<{
+    threadId: string
     isResponding?: boolean
     streamLimited?: boolean
     // 当前会话已有的对话轮数，换模型时要不要先提示
@@ -388,11 +399,12 @@ const props = withDefaults(
   },
 )
 const emit = defineEmits<{
-  send: [message: { content: string; files: File[]; request: ChatSendRequest }]
+  send: [message: { content: string; attachments: UploadedFileInfo[]; request: ChatSendRequest }]
   stop: []
 }>()
 const sendButtonLabel = computed(() => {
   if (props.isResponding) return '停止回复'
+  if (hasUploadingFiles.value) return '附件上传中'
   return props.streamLimited ? '同时进行的回复已达上限' : '发送消息'
 })
 // 悬停能力探测
@@ -410,8 +422,18 @@ const isAccessMenuOpen = ref(false)
 const textareaRef = ref<HTMLTextAreaElement>()
 const sendButtonRef = ref<HTMLButtonElement>()
 const fileInputRef = ref<HTMLInputElement>()
-type SelectedFile = { file: File; previewUrl: string | null }
+type SelectedFile = {
+  file: File
+  previewUrl: string | null
+  status: 'uploading' | 'uploaded'
+  uploaded?: UploadedFileInfo
+  removed: boolean
+  reportDeleteFailure: boolean
+}
 const selectedFiles = ref<SelectedFile[]>([])
+const hasUploadingFiles = computed(() =>
+  selectedFiles.value.some((item) => item.status === 'uploading'),
+)
 const isFileDragging = ref(false)
 const modelButtonRef = ref<HTMLButtonElement>()
 const isModelMenuOpen = ref(false)
@@ -460,7 +482,7 @@ function openFilePicker() {
   fileInputRef.value?.click()
 }
 
-// 附件去重，图片单独生成预览地址
+// 附件去重并立即上传到当前会话
 function addFiles(files: File[]) {
   // 先过类型白名单，不合格的只提示、不进附件条
   const accepted: File[] = []
@@ -487,13 +509,65 @@ function addFiles(files: File[]) {
   for (const file of accepted) {
     const key = fileKey(file)
     if (!existing.has(key)) {
-      selectedFiles.value.push({
+      const item = reactive<SelectedFile>({
         file,
         previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+        status: 'uploading',
+        removed: false,
+        reportDeleteFailure: false,
       })
+      selectedFiles.value.push(item)
       existing.add(key)
+      void uploadSelectedFile(item)
     }
   }
+}
+
+// 上传结束后改用服务端预览地址；已移除的附件随即清理
+async function uploadSelectedFile(item: SelectedFile): Promise<void> {
+  try {
+    const uploaded = await uploadFile(props.threadId, item.file)
+    item.uploaded = uploaded
+    item.status = 'uploaded'
+    if (item.removed) {
+      await removeUploadedFile(uploaded, item.reportDeleteFailure)
+      return
+    }
+    if (item.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(item.previewUrl)
+    item.previewUrl = isInlineUploadImage(uploaded.mime_type)
+      ? uploadPreviewUrl(uploaded.preview_url)
+      : null
+  } catch (error) {
+    if (item.removed) return
+    const index = selectedFiles.value.indexOf(item)
+    if (index >= 0) selectedFiles.value.splice(index, 1)
+    if (item.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(item.previewUrl)
+    ElMessage.error({
+      message: `${item.file.name}：${error instanceof Error ? error.message : '上传失败'}`,
+      plain: true,
+    })
+  }
+}
+
+// 删除服务端尚未发送的附件
+async function removeUploadedFile(
+  uploaded: UploadedFileInfo,
+  reportFailure: boolean,
+): Promise<void> {
+  try {
+    await deleteUpload(uploaded.thread_id, uploaded.file_id)
+  } catch (error) {
+    if (reportFailure) {
+      ElMessage.error({ message: error instanceof Error ? error.message : '删除附件失败', plain: true })
+    }
+  }
+}
+
+function discardSelectedFile(item: SelectedFile, reportFailure: boolean): void {
+  item.removed = true
+  item.reportDeleteFailure = reportFailure
+  if (item.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(item.previewUrl)
+  if (item.uploaded) void removeUploadedFile(item.uploaded, reportFailure)
 }
 
 function onFilesSelected(event: Event) {
@@ -536,7 +610,7 @@ function onFileDrop(event: DragEvent) {
 
 function removeFile(index: number) {
   const [removed] = selectedFiles.value.splice(index, 1)
-  if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl)
+  if (removed) discardSelectedFile(removed, true)
 }
 
 // 附件条只占一排，超出用横向拖动滚动，触屏交给原生滑动
@@ -768,9 +842,7 @@ onUnmounted(() => {
   document.removeEventListener('pointerdown', dismissCommandMenuOutside)
   window.clearTimeout(dragTimer)
   window.clearTimeout(settleTimer)
-  for (const item of selectedFiles.value) {
-    if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
-  }
+  for (const item of selectedFiles.value) discardSelectedFile(item, false)
   document.body.style.cursor = ''
   document.body.style.userSelect = ''
 })
@@ -916,7 +988,7 @@ function onResizePointerUp(event: PointerEvent): void {
   }
 }
 
-// 发出原始 File 后清理输入框和预览地址
+// 仅在附件全部上传成功后发送
 function sendMessage() {
   if (props.isResponding) return
   if (isCommandMenuOpen.value) {
@@ -924,17 +996,22 @@ function sendMessage() {
     return
   }
   const content = text.value.trim()
-  const files = selectedFiles.value.map((item) => item.file)
   // 必须有文字才发，只有附件不算一次提问
   if (!content) return
-  // 并发满了不发，草稿留着
-  if (props.streamLimited) return
-  emit('send', { content, files, request: chatOptions.value })
+  // 上传未完成或并发满了时保留草稿
+  if (props.streamLimited || hasUploadingFiles.value) return
+  // 发送前视觉能力校验
+  if (
+    selectedFiles.value.some((item) => isImageUploadFile(item.file)) &&
+    !selectedModel.value?.supports_vision
+  ) {
+    ElMessage.warning({ message: '当前模型不支持图片，请移除图片或切换模型', plain: true })
+    return
+  }
+  const attachments = selectedFiles.value.flatMap((item) => (item.uploaded ? [item.uploaded] : []))
+  emit('send', { content, attachments, request: chatOptions.value })
   text.value = ''
   commandMenuDismissed.value = false
-  for (const item of selectedFiles.value) {
-    if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
-  }
   selectedFiles.value = []
   void nextTick(() => {
     autoResize()

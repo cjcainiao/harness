@@ -13,10 +13,11 @@ from langchain.agents.middleware import AgentMiddleware
 from langgraph.errors import GraphBubbleUp
 
 from harness.agents.lead_agent import Tool, create_lead_agent
+from harness.agents.thread_state import UploadedFileInfo
 from harness.config.app_config import get_app_config
 from harness.core.logger import get_logger
 from harness.models.factory import ReasoningEffort
-from harness.runtime.checkpointer import get_checkpointer
+from harness.agents.memory.checkpointer import get_checkpointer
 from harness.runtime.events import parse_message_events
 from harness.storage import history
 from harness.storage.recorder import TurnRecorder
@@ -68,9 +69,9 @@ def _with_source(
 
 
 # 开启历史轮次，失败时返回 None 表示本轮不入库
-def _start_turn(thread_id: str, question: str) -> str | None:
+def _start_turn(thread_id: str, question: str, uploaded_files: Sequence[UploadedFileInfo]) -> str | None:
     try:
-        return history.start_turn(thread_id, question)
+        return history.start_turn(thread_id, question, uploaded_files)
     except sqlite3.Error as error:
         logger.warning("历史轮次创建失败", thread_id=thread_id, error=str(error))
         return None
@@ -84,6 +85,7 @@ async def stream_agent(
     reasoning_effort: ReasoningEffort | None = None,
     *,
     thread_id: str | None = None,
+    uploaded_files: Sequence[UploadedFileInfo] = (),
     tools: Sequence[Tool] | None = None,
     middleware: Sequence[AgentMiddleware] | None = None,
     system_prompt: str | None = None,
@@ -93,7 +95,7 @@ async def stream_agent(
     run_config = {"configurable": {"thread_id": thread_id}}
 
     recorder = TurnRecorder()
-    turn_id = _start_turn(thread_id, message)
+    turn_id = _start_turn(thread_id, message, uploaded_files)
 
     # 覆盖轮次进度或收尾状态，写库失败不打断回复
     def save(status: str) -> None:
@@ -124,9 +126,12 @@ async def stream_agent(
             checkpointer=get_checkpointer(),
         )
 
-        # 输入只给当轮消息，历史由 thread_id 从检查点取回
+        # 本轮附件状态
         async for chunk in agent.astream(
-            {"messages": [{"role": "user", "content": message}]},
+            {
+                "messages": [{"role": "user", "content": message}],
+                "uploaded_files": list(uploaded_files),
+            },
             config=run_config,
             durability=get_app_config().memory.durability,
             stream_mode=["messages", "custom"],

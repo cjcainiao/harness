@@ -11,7 +11,3 @@ class ToolConfig(BaseModel):
 
     tool_groups: list[dict[str, str]] = Field(default_factory=list, description="工具分组")
     tools: list[dict[str, Any]] = Field(default_factory=list, description="工具列表")
-    tool_search: dict[str, Any] = Field(
-        default_factory=lambda: {"enabled": False, "max_results": 5},
-        description="工具查找配置",
-    )

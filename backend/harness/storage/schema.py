@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS chat_turn (
     thread_id TEXT NOT NULL REFERENCES chat_thread (id) ON DELETE CASCADE,
     -- 会话内递增序号，决定显示顺序
     seq INTEGER NOT NULL,
-    -- 提问原文
+    -- 提问正文与附件 JSON
     question TEXT NOT NULL,
     -- 状态，取值 streaming / completed / failed / interrupted
     status TEXT NOT NULL DEFAULT 'streaming',

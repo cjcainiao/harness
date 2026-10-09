@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from typing import Any
 
@@ -117,6 +118,21 @@ def _from_json(value: Any) -> dict[str, Any] | None:
     return json.loads(value) if isinstance(value, str) and value else None
 
 
+# 历史提问解析
+def _question_from_json(value: str) -> dict[str, Any]:
+    try:
+        question = json.loads(value)
+    except json.JSONDecodeError:
+        return {"content": value, "attachments": []}
+    if (
+        isinstance(question, dict)
+        and isinstance(question.get("content"), str)
+        and isinstance(question.get("attachments"), list)
+    ):
+        return {"content": question["content"], "attachments": question["attachments"]}
+    return {"content": value, "attachments": []}
+
+
 # 读用量计数，非法值按 0 算
 def _count(usage: dict[str, Any] | None, key: str) -> int:
     value = usage.get(key) if isinstance(usage, dict) else None
@@ -126,7 +142,9 @@ def _count(usage: dict[str, Any] | None, key: str) -> int:
 
 
 # 建会话并开一轮，返回轮次标识
-def start_turn(thread_id: str, question: str) -> str:
+def start_turn(
+    thread_id: str, question: str, attachments: Sequence[Mapping[str, Any]] = ()
+) -> str:
     turn_id = uuid.uuid4().hex
     now = _utc_now()
 
@@ -140,7 +158,14 @@ def start_turn(thread_id: str, question: str) -> str:
             seq = conn.execute(SQL_NEXT_SEQ, (thread_id,)).fetchone()[0]
             conn.execute(
                 SQL_INSERT_TURN,
-                (turn_id, thread_id, seq, question, TURN_STREAMING, now),
+                (
+                    turn_id,
+                    thread_id,
+                    seq,
+                    _to_json({"content": question, "attachments": list(attachments)}),
+                    TURN_STREAMING,
+                    now,
+                ),
             )
     finally:
         conn.close()
@@ -235,7 +260,8 @@ async def list_turns(
     turns: list[dict[str, Any]] = []
     for row in reversed(rows):
         turn = dict(row)
-        # JSON 列还原成结构
+        # 历史 JSON 字段解析
+        turn["question"] = _question_from_json(turn["question"])
         turn["items"] = json.loads(turn.pop("items_json"))
         usage_json = turn.pop("usage_json")
         turn["usage"] = json.loads(usage_json) if usage_json else None

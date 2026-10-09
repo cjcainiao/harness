@@ -47,6 +47,7 @@ coverage/
 
 # ============ backend（Python） ============
 /backend/test/*
+/backend/tests/
 .venv/
 venv/
 backend/ENV/

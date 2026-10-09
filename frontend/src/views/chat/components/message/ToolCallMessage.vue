@@ -9,7 +9,7 @@
       </span>
     </summary>
 
-    <div class="tool-timeline">
+    <div ref="timeline" class="tool-timeline">
       <ToolCallItem v-for="tool in tools" :key="tool.id" :tool="tool" />
     </div>
   </details>
@@ -17,7 +17,7 @@
 
 <script setup lang="ts">
 import { ChevronDown } from 'lucide-vue-next'
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import ShimmerText from '@/components/ShimmerText.vue'
 import { formatDuration, useLiveTimer } from '@/utils/turnTimerUtil'
 import ToolCallItem from './ToolCallItem.vue'
@@ -51,6 +51,31 @@ function onToggle(event: Event): void {
 }
 
 const isRunning = computed(() => props.tools.some(isRunningTool))
+const timeline = ref<HTMLElement | null>(null)
+const BOTTOM_EDGE_PX = 24
+
+// 展开时定位工具列表
+watch(open, (expanded) => {
+  if (!expanded) return
+  void nextTick(() => {
+    const element = timeline.value
+    if (element) element.scrollTop = isRunning.value ? element.scrollHeight : 0
+  })
+})
+
+// 新工具到达时跟随底部，手动上翻后停止跟随
+watch(
+  () => props.tools.length,
+  () => {
+    const element = timeline.value
+    if (!element || !open.value || !isRunning.value) return
+    if (element.scrollHeight - element.scrollTop - element.clientHeight > BOTTOM_EDGE_PX) return
+    void nextTick(() => {
+      element.scrollTop = element.scrollHeight
+    })
+  },
+)
+
 // 执行中用本地时钟刷新整组计时
 const nowTick = useLiveTimer(() => isRunning.value)
 
@@ -137,9 +162,12 @@ const timerText = computed(() => {
 .tool-timeline {
   display: grid;
   gap: 7px;
+  max-height: 260px;
   min-width: 0;
   margin: 4px 0 0 10px;
   padding: 2px 0 2px 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border-left: 1px solid #e1e4e5;
 }
 

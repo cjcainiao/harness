@@ -1,5 +1,6 @@
 // history 页面模块接口
 import requestUtil, { type ApiResult } from '@/utils/requestUtil'
+import type { UploadedFileInfo } from '@/api/uploads'
 
 /** 渲染段类型 */
 export type TurnItemKind = 'message' | 'reasoning' | 'tool' | 'error'
@@ -77,8 +78,8 @@ export interface TurnInfo {
   thread_id: string
   // 会话内序号
   seq: number
-  // 提问原文
-  question: string
+  // 提问正文与附件
+  question: { content: string; attachments: UploadedFileInfo[] }
   // 轮次状态
   status: 'streaming' | 'completed' | 'failed' | 'interrupted'
   // 提问时间，ISO-8601 UTC

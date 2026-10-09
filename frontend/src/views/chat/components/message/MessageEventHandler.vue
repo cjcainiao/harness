@@ -82,6 +82,7 @@ import { ElMessage } from 'element-plus'
 import { CornerDownRight } from 'lucide-vue-next'
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import type { ChatSendRequest } from '@/api/chat'
+import type { UploadedFileInfo } from '@/api/uploads'
 import { useChatSessionsStore } from '@/stores/chatSessions'
 import { createUuid } from '@/utils/uuidUtil'
 import MessageChunk from './MessageChunk.vue'
@@ -307,10 +308,10 @@ watch(
   },
 )
 
-// 发送提问，附件仅在本地展示
+// 发送提问并显示已上传附件
 function startChatTurn(
   question: string,
-  options: { files?: File[]; request?: ChatSendRequest } = {},
+  options: { attachments?: UploadedFileInfo[]; request?: ChatSendRequest } = {},
 ): string {
   pinned = true
   return chatSessions.startChatTurn(props.threadId, question, options)

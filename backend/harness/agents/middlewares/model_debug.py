@@ -13,7 +13,7 @@ from langchain_core.utils.function_calling import convert_to_openai_function
 from langgraph.config import get_config
 
 from harness.core.logger import get_logger
-from harness.runtime.checkpointer import get_checkpointer
+from harness.agents.memory.checkpointer import get_checkpointer
 
 
 logger = get_logger(__name__)

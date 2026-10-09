@@ -2,9 +2,10 @@ import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
 import { streamChat } from '@/api/chat'
 import type { ChatSendRequest, ChatStreamRequest } from '@/api/chat'
+import type { UploadedFileInfo } from '@/api/uploads'
 import { fetchThreadTurns, fetchThreads } from '@/api/history'
 import type { ThreadCursor, ThreadInfo, TurnInfo } from '@/api/history'
-import { mapTurns, toTimestamp } from '@/views/chat/components/message/historyMapper'
+import { mapTurns, toChatAttachments, toTimestamp } from '@/views/chat/components/message/historyMapper'
 import { createTurnRuntime, isRunningTool } from '@/views/chat/components/message/messageTurn'
 import type {
   ChatTurn,
@@ -421,21 +422,12 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
   function startTurn(
     threadId: string,
     question: string,
-    options: { id?: string; files?: File[] } = {},
+    options: { id?: string; attachments?: UploadedFileInfo[] } = {},
   ): string {
     const turns = turnsRef(threadId)
     const turnId = options.id ?? createUuid()
     if (turns.some((turn) => turn.id === turnId)) throw new Error('turn_id 已存在')
-    const attachments = options.files?.map((file) => {
-      const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined
-      return {
-        id: createUuid(),
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        previewUrl,
-      }
-    })
+    const attachments = options.attachments && toChatAttachments(options.attachments)
     turns.push({
       id: turnId,
       threadId,
@@ -866,13 +858,14 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
   function startChatTurn(
     threadId: string,
     question: string,
-    options: { files?: File[]; request?: ChatSendRequest } = {},
+    options: { attachments?: UploadedFileInfo[]; request?: ChatSendRequest } = {},
   ): string {
     const turnId = startTurn(threadId, question, options)
     void runChatTurn(turnId, {
       ...options.request,
       message: question,
       thread_id: threadId,
+      attachments: options.attachments ?? [],
     })
     return turnId
   }

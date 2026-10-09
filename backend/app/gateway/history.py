@@ -6,6 +6,7 @@ from fastapi import APIRouter, Path, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.result import Result
+from app.gateway.uploads import UploadInfo
 from harness.storage import history
 
 
@@ -53,6 +54,14 @@ class ThreadInfo(BaseModel):
     output_tokens: int = Field(description="会话累计输出 Token")
 
 
+# 提问正文与附件
+class QuestionInfo(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content: str = Field(description="提问正文")
+    attachments: list[UploadInfo] = Field(description="本轮上传附件信息")
+
+
 # 一轮问答
 class TurnInfo(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -60,7 +69,7 @@ class TurnInfo(BaseModel):
     turn_id: str = Field(description="轮次标识")
     thread_id: str = Field(description="所属会话")
     seq: int = Field(description="会话内序号")
-    question: str = Field(description="提问原文")
+    question: QuestionInfo = Field(description="提问正文与附件")
     status: str = Field(description="轮次状态，取值 streaming / completed / failed / interrupted")
     created_at: str = Field(description="提问时间，ISO-8601 UTC")
     items: list[TurnItemInfo] = Field(description="渲染段，顺序即显示顺序")
@@ -108,7 +117,7 @@ async def get_thread_turns(
                 turn_id=row["turn_id"],
                 thread_id=row["thread_id"],
                 seq=row["seq"],
-                question=row["question"],
+                question=QuestionInfo(**row["question"]),
                 status=row["status"],
                 created_at=row["created_at"],
                 items=[TurnItemInfo(**item) for item in row["items"]],

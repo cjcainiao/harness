@@ -1,5 +1,6 @@
 // chat 页面模块接口
 import sseUtil, { type SseError } from '@/utils/sseUtil'
+import type { UploadedFileInfo } from '@/api/uploads'
 
 /** 流式对话请求体 */
 export interface ChatStreamRequest {
@@ -7,6 +8,8 @@ export interface ChatStreamRequest {
   message: string
   // 会话标识
   thread_id?: string
+  // 本轮已上传附件信息
+  attachments?: UploadedFileInfo[]
   // 实际模型名称
   model_name?: string
   // 是否启用推理
@@ -16,7 +19,7 @@ export interface ChatStreamRequest {
 }
 
 /** 除消息内容与会话标识外的对话参数 */
-export type ChatSendRequest = Omit<ChatStreamRequest, 'message' | 'thread_id'>
+export type ChatSendRequest = Omit<ChatStreamRequest, 'message' | 'thread_id' | 'attachments'>
 
 /** 单次模型响应的令牌用量 */
 export interface ChatUsage {
