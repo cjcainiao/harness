@@ -169,6 +169,15 @@ tools:
       default_max_results: 5 # 本工具最多返回命中条数
     } # 工具额外配置
 
+  - name: describe_skill # 工具名称
+    group: system # 所属工具组
+    use: harness.skills.describe:describe_skill # 工具实现
+    enabled: true # 是否启用
+    aliases: [查找技能, 搜索技能] # 查找别名
+    settings: {
+      default_max_results: 5 # 关键词搜索最多返回的技能数
+    } # 工具额外配置
+
   - name: task # 工具名称
     group: system # 所属工具组
     use: harness.subagents.task_tool:task # 工具实现
@@ -200,7 +209,6 @@ skills:
   file: SKILL.md         # 技能主文件名
   categories: [custom, public] # 技能分类目录，靠前的优先
   name_pattern: '^[a-z0-9][a-z0-9-]*$' # 技能名字符集
-  max_in_prompt: 20      # 写入提示词的技能名单条数上限
   description_limit: 1024 # 描述字数上限
 
 # 子代理配置

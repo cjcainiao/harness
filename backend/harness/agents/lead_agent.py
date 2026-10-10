@@ -60,7 +60,7 @@ def create_lead_agent(
     prompt = render_lead_agent_prompt(
         role=system_prompt,
         deferred_tools=deferred_tools_section() if search_enabled else "",
-        skills=skills_section(load_skills()),
+        skills=skills_section(load_skills(), describe_skill_enabled="describe_skill" in bound_tools),
         subagents=subagents_section(load_subagent_configs()),
     )
 

@@ -33,6 +33,8 @@ WORKDIR /app
 COPY app/ ./app/
 # 框架包
 COPY harness/ ./harness/
+# 技能包
+COPY skills/ ./skills/
 # 依赖清单与 Python 版本
 COPY pyproject.toml uv.lock .python-version ./
 # 运行配置

@@ -14,5 +14,4 @@ class skillsConfig(BaseModel):
         description="技能分类目录，靠前的优先",
     )
     name_pattern: str = Field(default=r"^[a-z0-9][a-z0-9-]*$", min_length=1, description="技能名字符集")
-    max_in_prompt: int = Field(default=20, gt=0, description="写入提示词的技能名单条数上限")
     description_limit: int = Field(default=1024, gt=0, description="描述字数上限")

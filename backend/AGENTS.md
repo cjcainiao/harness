@@ -55,9 +55,9 @@
 - frontmatter 只写 `name` 和 `description`：`name` 必须等于所在目录名，字符集取自 `skills.name_pattern`（默认小写字母、数字与连字符）；`description` 说清做什么与何时使用，上限取自 `skills.description_limit`（默认 1024 字）
 - 三个可选子目录按用途固定：`scripts/` 放可执行代码，`references/` 放文档资料，`assets/` 放模板与静态资源；代码文件不进 `assets/`
 - `SKILL.md` 正文只写判断和执行顺序，细节一律推到 `references/`，建议 60 行以内
-- 渐进披露：提示词只注入技能名、描述和主文件绝对路径，正文由模型自己用 `read_file` 取，不预注入
-- 进提示词的技能条数受 `skills.max_in_prompt` 限制，先按分类再按名字排序，超出截断并告警
-- 不为技能新增取用工具，通道就是 `read_file`
+- 渐进披露：`describe_skill` 启用时提示词只注入技能名，模型查询描述和路径后用 `read_file` 取正文；停用时提示词注入技能名、描述和主文件绝对路径
+- 可用技能按分类优先级和分类内名称排序后全部写入提示词名单
+- `describe_skill` 只返回技能元数据，技能正文由 `read_file` 读取
 - 每次建图重扫技能目录，不做缓存；改完 `SKILL.md` 下一轮生效
 - 技能名重复时保留排序靠前的，后者告警跳过，不静默覆盖
 - 符号链接目录不跟随；根目录不存在告警后按空名单处理，缺主文件、缺 `name` 或 `description`、字符集不合规等技能包逐个告警跳过，建图不因技能失败

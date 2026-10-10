@@ -1,10 +1,10 @@
 # 工具登记与模板细节
 
-`SKILL.md` 执行顺序对应的模板都在这一份。抄现成的参照文件：`backend/harness/tools/system/file_operations.py`（一族四工具、带 settings）、`backend/harness/tools/text/word_count.py`（懒加载组）。
+`SKILL.md` 执行顺序对应的模板都在这一份。以下路径均以 `backend/` 为工作目录。抄现成的参照文件：`harness/tools/system/file_operations.py`（一族四工具、带 settings）、`harness/tools/text/word_count.py`（懒加载组）。
 
 ## 参数类与工具骨架
 
-要空骨架直接照下面这份改；要往配置里登记的条目模板在 `../assets/tool_registration.yaml`，那份文件自身可解析，取 `tools:` 下那条粘进列表末尾。
+要空骨架直接照下面这份改；要往配置里登记的条目模板在 `skills/custom/add-local-tool/assets/tool_registration.yaml`，那份文件自身可解析，取 `tools:` 下那条粘进列表末尾。
 
 ```python
 # 目录统计工具
@@ -120,16 +120,15 @@ def count_files(path: str, max_entries: int | None = None) -> str:
 - `aliases` 必填，`tool_search` 的普通查询会用不区分大小写的正则匹配工具名、说明和别名；`select:` 按准确工具名选取，`+` 可先限定工具名。别名写能力词及常见说法，方便关键词命中。
 - 懒加载只在 `tools` 中 `tool_search` 注册项的 `enabled: true` 时参与装配；关掉时非默认组工具不建图、模型也看不到。
 - `tool_search` 命中后把工具名写入 `ThreadState.promoted`；同一会话的检查点会保留开放名单，工具目录变化后需要重新检索。
-- 新开一个主题族时：建 `backend/harness/tools/<组>/__init__.py`（一行包说明），并在 `config.example.yaml` 与 `config.yaml` 的 `tool_groups:` 补一行分组名，两处 group 值要和它对上。
+- 新开一个主题族时：建 `harness/tools/<组>/__init__.py`（一行包说明），并在 `config.example.yaml` 与 `config.yaml` 的 `tool_groups:` 补一行分组名，两处 group 值要和它对上。
 
 ## 改 config.yaml 的注意
 
-`backend/config.yaml` 不入版本控制且含真实密钥。核对只按行读需要的那个键，不要整文件 diff、不要打印密钥行；往 `tools:` 追加条目时按缩进照现有条目抄，别动别的段。
+`config.yaml` 不入版本控制且含真实密钥。核对只按行读需要的那个键，不要整文件 diff、不要打印密钥行；往 `tools:` 追加条目时按缩进照现有条目抄，别动别的段。
 
 ## 验收命令
 
 ```bash
-cd backend
 uv run python -c "from app.main import app; print('import ok')"
 
 # 懒加载组：确认进了目录

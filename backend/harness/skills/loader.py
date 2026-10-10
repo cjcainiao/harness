@@ -153,22 +153,24 @@ def load_skills() -> list[Skill]:
                 continue
             found[skill.name] = skill
 
-    skills = list(found.values())
-    if len(skills) > config.max_in_prompt:
-        logger.warning(
-            "技能数量超上限，按分类与名字截断",
-            total=len(skills),
-            limit=config.max_in_prompt,
-        )
-        skills = skills[: config.max_in_prompt]
-    return skills
+    return list(found.values())
 
 
 # 拼进提示词的技能名单
-def skills_section(skills: list[Skill]) -> str:
+def skills_section(skills: list[Skill], *, describe_skill_enabled: bool) -> str:
     if not skills:
         return ""
 
+    # 技能发现工具可用时只列名称
+    if describe_skill_enabled:
+        names = "\n".join(f"- {skill.name}" for skill in skills)
+        return (
+            "\n\n以下是可用技能名称。任务需要某个技能时，先调用 describe_skill 查询用途和说明文档路径，"
+            "确认适用后再用 read_file 读取说明文档并按文档执行：\n"
+            f"<skill_index>\n{names}\n</skill_index>"
+        )
+
+    # 技能发现工具不可用时列出完整元数据
     listing = "\n".join(
         f"- {skill.name}: {skill.description}\n  说明文档：{skill.path}" for skill in skills
     )
