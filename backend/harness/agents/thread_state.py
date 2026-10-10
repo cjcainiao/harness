@@ -22,6 +22,14 @@ class UploadedFileInfo(TypedDict):
     preview_url: str
 
 
+# 已查看图片信息
+class ViewedImageData(TypedDict):
+    mime_type: str
+    size: int
+    actual_path: str
+    sha256: str
+
+
 # 已开放工具合并
 def merge_promoted(existing: PromotedTools | None, new: PromotedTools | None) -> PromotedTools | None:
     if not new:
@@ -34,6 +42,18 @@ def merge_promoted(existing: PromotedTools | None, new: PromotedTools | None) ->
     }
 
 
+# 已查看图片合并
+def merge_viewed_images(
+    existing: dict[str, ViewedImageData] | None,
+    new: dict[str, ViewedImageData] | None,
+) -> dict[str, ViewedImageData]:
+    if new is None:
+        return existing or {}
+    if not new:
+        return {}
+    return {**(existing or {}), **new}
+
+
 # 主代理会话状态
 class ThreadState(AgentState):
     # 已开放工具
@@ -41,6 +61,9 @@ class ThreadState(AgentState):
 
     # 本轮上传的附件信息
     uploaded_files: NotRequired[list[UploadedFileInfo]]
+
+    # 已查看图片信息，键为图片路径
+    viewed_images: Annotated[dict[str, ViewedImageData], merge_viewed_images]
 
     # 会话工作空间路径
     workspace_path: NotRequired[str | None]

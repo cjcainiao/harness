@@ -1,6 +1,6 @@
 <!--附件卡片-->
 <template>
-  <div class="attachment-card" role="listitem" :title="name" :aria-busy="uploading">
+  <div class="attachment-card" role="listitem" :aria-busy="uploading">
     <img
       v-if="previewUrl"
       class="attachment-thumb"
@@ -121,8 +121,8 @@ function formatSize(size: number): string {
   left: 0;
   display: block;
   width: 100%;
-  height: calc(100% - 26px);
-  border-radius: 8px 8px 0 0;
+  height: 100%;
+  border-radius: 8px;
   background: #e9ebef;
   object-fit: cover;
   cursor: zoom-in;
@@ -133,23 +133,31 @@ function formatSize(size: number): string {
 }
 .attachment-icon {
   position: absolute;
-  top: 21px;
+  top: 50%;
   left: 50%;
   width: 52px;
   height: 52px;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   object-fit: contain;
 }
 .attachment-info {
   position: absolute;
-  right: 8px;
-  bottom: 6px;
-  left: 8px;
+  right: 0;
+  bottom: 0;
+  left: 0;
   display: flex;
   align-items: center;
   gap: 5px;
+  box-sizing: border-box;
+  height: 26px;
   min-width: 0;
+  padding: 0 8px;
+  border-radius: 0 0 8px 8px;
+  background: rgba(245, 246, 248, 0.96);
   line-height: 16px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
 }
 .attachment-name {
   min-width: 0;
@@ -188,9 +196,23 @@ function formatSize(size: number): string {
   outline: 2px solid #a5b6da;
   outline-offset: 2px;
 }
+.attachment-card:focus-within .attachment-info {
+  opacity: 1;
+  pointer-events: auto;
+}
 @media (hover: hover) {
+  .attachment-card:hover .attachment-info {
+    opacity: 1;
+    pointer-events: auto;
+  }
   .attachment-name-link:hover {
     text-decoration: underline;
+  }
+}
+@media (hover: none) {
+  .attachment-info {
+    opacity: 1;
+    pointer-events: auto;
   }
 }
 .attachment-uploading {

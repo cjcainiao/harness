@@ -54,11 +54,11 @@
       >
         <AttachmentCard
           v-for="(item, index) in selectedFiles"
-          :key="fileKey(item.file)"
-          :name="item.file.name"
+          :key="item.key"
+          :name="item.name"
           :preview-url="item.previewUrl"
           :download-url="item.uploaded ? uploadPreviewUrl(item.uploaded.preview_url) : undefined"
-          :size="item.file.size"
+          :size="item.size"
           :uploading="item.status === 'uploading'"
           removable
           :sweep="item.status === 'uploading'"
@@ -379,6 +379,11 @@ import {
   isAllowedUploadFile,
   isImageUploadFile,
 } from '@/utils/fileUploadUtil'
+import {
+  readSessionStorage,
+  removeSessionStorage,
+  writeSessionStorage,
+} from '@/utils/sessionStorageUtil'
 import AttachmentCard from '@/views/chat/components/attachment/AttachmentCard.vue'
 import EnergyField from './EnergyField.vue'
 import ModelInfoTip from './ModelInfoTip.vue'
@@ -423,14 +428,72 @@ const textareaRef = ref<HTMLTextAreaElement>()
 const sendButtonRef = ref<HTMLButtonElement>()
 const fileInputRef = ref<HTMLInputElement>()
 type SelectedFile = {
-  file: File
+  key: string
+  name: string
+  size: number
+  isImage: boolean
   previewUrl: string | null
   status: 'uploading' | 'uploaded'
   uploaded?: UploadedFileInfo
   removed: boolean
   reportDeleteFailure: boolean
 }
-const selectedFiles = ref<SelectedFile[]>([])
+type StoredAttachment = { key: string; isImage: boolean; uploaded: UploadedFileInfo }
+
+function attachmentDraftKey(threadId: string): string {
+  return `chat:attachment-draft:${threadId}`
+}
+
+// 仅恢复已上传完成的附件，文件本体由后端保存
+function restoreAttachments(threadId: string): SelectedFile[] {
+  const value = readSessionStorage<unknown>(attachmentDraftKey(threadId))
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry: unknown) => {
+    if (typeof entry !== 'object' || entry === null) return []
+    const item = entry as Record<string, unknown>
+    const uploaded = item.uploaded
+    if (typeof uploaded !== 'object' || uploaded === null) return []
+    const info = uploaded as Record<string, unknown>
+    if (
+      typeof item.key !== 'string' ||
+      typeof item.isImage !== 'boolean' ||
+      typeof info.file_id !== 'string' ||
+      info.thread_id !== threadId ||
+      typeof info.name !== 'string' ||
+      typeof info.size !== 'number' ||
+      typeof info.mime_type !== 'string' ||
+      typeof info.created_at !== 'string' ||
+      typeof info.preview_url !== 'string'
+    )
+      return []
+    const attachment = info as unknown as UploadedFileInfo
+    return [
+      {
+        key: item.key,
+        name: attachment.name,
+        size: attachment.size,
+        isImage: item.isImage,
+        previewUrl: isInlineUploadImage(attachment.mime_type)
+          ? uploadPreviewUrl(attachment.preview_url)
+          : null,
+        status: 'uploaded' as const,
+        uploaded: attachment,
+        removed: false,
+        reportDeleteFailure: false,
+      },
+    ]
+  })
+}
+
+const selectedFiles = ref<SelectedFile[]>(restoreAttachments(props.threadId))
+
+function saveAttachments(): void {
+  const uploaded = selectedFiles.value.flatMap((item): StoredAttachment[] =>
+    item.uploaded ? [{ key: item.key, isImage: item.isImage, uploaded: item.uploaded }] : [],
+  )
+  if (uploaded.length) writeSessionStorage(attachmentDraftKey(props.threadId), uploaded)
+  else removeSessionStorage(attachmentDraftKey(props.threadId))
+}
 const hasUploadingFiles = computed(() =>
   selectedFiles.value.some((item) => item.status === 'uploading'),
 )
@@ -505,12 +568,15 @@ function addFiles(files: File[]) {
   if (visionRejected)
     ElMessage.warning({ message: describeVisionRejectedFiles(modelLabel.value), plain: true })
 
-  const existing = new Set(selectedFiles.value.map((item) => fileKey(item.file)))
+  const existing = new Set(selectedFiles.value.map((item) => item.key))
   for (const file of accepted) {
     const key = fileKey(file)
     if (!existing.has(key)) {
       const item = reactive<SelectedFile>({
-        file,
+        key,
+        name: file.name,
+        size: file.size,
+        isImage: isImageUploadFile(file),
         previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
         status: 'uploading',
         removed: false,
@@ -518,15 +584,15 @@ function addFiles(files: File[]) {
       })
       selectedFiles.value.push(item)
       existing.add(key)
-      void uploadSelectedFile(item)
+      void uploadSelectedFile(item, file)
     }
   }
 }
 
 // 上传结束后改用服务端预览地址；已移除的附件随即清理
-async function uploadSelectedFile(item: SelectedFile): Promise<void> {
+async function uploadSelectedFile(item: SelectedFile, file: File): Promise<void> {
   try {
-    const uploaded = await uploadFile(props.threadId, item.file)
+    const uploaded = await uploadFile(props.threadId, file)
     item.uploaded = uploaded
     item.status = 'uploaded'
     if (item.removed) {
@@ -537,13 +603,14 @@ async function uploadSelectedFile(item: SelectedFile): Promise<void> {
     item.previewUrl = isInlineUploadImage(uploaded.mime_type)
       ? uploadPreviewUrl(uploaded.preview_url)
       : null
+    saveAttachments()
   } catch (error) {
     if (item.removed) return
     const index = selectedFiles.value.indexOf(item)
     if (index >= 0) selectedFiles.value.splice(index, 1)
     if (item.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(item.previewUrl)
     ElMessage.error({
-      message: `${item.file.name}：${error instanceof Error ? error.message : '上传失败'}`,
+      message: `${item.name}：${error instanceof Error ? error.message : '上传失败'}`,
       plain: true,
     })
   }
@@ -558,7 +625,10 @@ async function removeUploadedFile(
     await deleteUpload(uploaded.thread_id, uploaded.file_id)
   } catch (error) {
     if (reportFailure) {
-      ElMessage.error({ message: error instanceof Error ? error.message : '删除附件失败', plain: true })
+      ElMessage.error({
+        message: error instanceof Error ? error.message : '删除附件失败',
+        plain: true,
+      })
     }
   }
 }
@@ -611,6 +681,7 @@ function onFileDrop(event: DragEvent) {
 function removeFile(index: number) {
   const [removed] = selectedFiles.value.splice(index, 1)
   if (removed) discardSelectedFile(removed, true)
+  saveAttachments()
 }
 
 // 附件条只占一排，超出用横向拖动滚动，触屏交给原生滑动
@@ -842,7 +913,10 @@ onUnmounted(() => {
   document.removeEventListener('pointerdown', dismissCommandMenuOutside)
   window.clearTimeout(dragTimer)
   window.clearTimeout(settleTimer)
-  for (const item of selectedFiles.value) discardSelectedFile(item, false)
+  for (const item of selectedFiles.value) {
+    if (item.status === 'uploading') discardSelectedFile(item, false)
+    else if (item.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(item.previewUrl)
+  }
   document.body.style.cursor = ''
   document.body.style.userSelect = ''
 })
@@ -1001,10 +1075,7 @@ function sendMessage() {
   // 上传未完成或并发满了时保留草稿
   if (props.streamLimited || hasUploadingFiles.value) return
   // 发送前视觉能力校验
-  if (
-    selectedFiles.value.some((item) => isImageUploadFile(item.file)) &&
-    !selectedModel.value?.supports_vision
-  ) {
+  if (selectedFiles.value.some((item) => item.isImage) && !selectedModel.value?.supports_vision) {
     ElMessage.warning({ message: '当前模型不支持图片，请移除图片或切换模型', plain: true })
     return
   }
@@ -1013,6 +1084,7 @@ function sendMessage() {
   text.value = ''
   commandMenuDismissed.value = false
   selectedFiles.value = []
+  saveAttachments()
   void nextTick(() => {
     autoResize()
     textareaRef.value?.focus()

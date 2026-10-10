@@ -9,6 +9,7 @@ from harness.agents.middlewares.deferred_tool_filter import DeferredToolFilterMi
 from harness.agents.middlewares.model_debug import ModelDebugMiddleware
 from harness.agents.middlewares.thread_data import ThreadDataMiddleware
 from harness.agents.middlewares.tool_call import ToolCallMiddleware
+from harness.agents.middlewares.view_image import ViewImageMiddleware
 from harness.config.app_config import get_app_config
 from harness.tools.system.tool_search import catalog_hash, registry_entries
 
@@ -24,6 +25,7 @@ def build_agent_middleware(
         ToolCallMiddleware(),
         ThreadDataMiddleware(),
         AttachmentMiddleware(),
+        ViewImageMiddleware(),
     ]
 
     # 工具查找配置

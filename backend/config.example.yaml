@@ -7,7 +7,7 @@ config_version: 3
 system:
   app_name: harness      # 应用名称
   env: dev               # 运行环境：dev / test / prod
-  debug: false           # 是否开启调试模式
+  debug: true            # 是否开启调试模式
   host: 127.0.0.1        # 服务监听地址
   port: 8000             # 服务监听端口，范围 1-65535
   api_prefix: /api       # 接口统一前缀
@@ -106,6 +106,8 @@ models:
 tool_groups:
   - name: system
   - name: text
+  - name: document
+  - name: image
 
 # 工具列表
 tools:
@@ -178,6 +180,18 @@ tools:
     use: harness.tools.text.word_count:word_count # 工具实现
     enabled: true # 是否启用
     aliases: [字数统计, 统计字数] # 查找别名
+
+  - name: convert_document_to_markdown # 工具名称
+    group: document # 所属工具组
+    use: harness.tools.document.convert_document:convert_document_to_markdown # 工具实现
+    enabled: true # 是否启用
+    aliases: [文档转 Markdown, 转换 Word, 转换 PDF] # 查找别名
+
+  - name: view_image # 工具名称
+    group: image # 所属工具组
+    use: harness.tools.image.view_image:view_image # 工具实现
+    enabled: true # 是否启用
+    aliases: [查看图片, 读取图片, 分析图片] # 查找别名
 
 # 技能配置
 skills:

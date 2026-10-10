@@ -67,6 +67,11 @@ import type { ChatSendRequest } from '@/api/chat'
 import type { UploadedFileInfo } from '@/api/uploads'
 import { useChatSessionsStore } from '@/stores/chatSessions'
 import { setPageTitle } from '@/utils/pageTitleUtil'
+import {
+  readSessionStorage,
+  removeSessionStorage,
+  writeSessionStorage,
+} from '@/utils/sessionStorageUtil'
 import { createUuid } from '@/utils/uuidUtil'
 import ChatDrawer from './components/drawer/ChatDrawer.vue'
 import ChatInput from './components/input/ChatInput.vue'
@@ -82,12 +87,22 @@ const emit = defineEmits<{ 'toggle-sidebar': [] }>()
 const route = useRoute()
 const router = useRouter()
 const chatSessions = useChatSessionsStore()
-// 新对话没有路由 ID 时保留稳定的临时 ID
-const newThreadId = createUuid()
-chatSessions.markHistoryLoaded(newThreadId)
+const NEW_THREAD_KEY = 'chat:new-thread-id'
+
+// 新对话尚未写入路由时，刷新后沿用同一会话工作空间
+function getNewThreadId(): string {
+  const stored = readSessionStorage<unknown>(NEW_THREAD_KEY)
+  if (typeof stored === 'string' && stored.trim()) return stored
+  const id = createUuid()
+  writeSessionStorage(NEW_THREAD_KEY, id)
+  return id
+}
+
+const newThreadId = ref(getNewThreadId())
+chatSessions.markHistoryLoaded(newThreadId.value)
 const threadId = computed(() => {
   const id = route.query.thread_id
-  return typeof id === 'string' && id.trim() ? id : newThreadId
+  return typeof id === 'string' && id.trim() ? id : newThreadId.value
 })
 const messageHandler = ref<InstanceType<typeof MessageEventHandler> | null>(null)
 const chatInput = ref<InstanceType<typeof ChatInput> | null>(null)
@@ -123,8 +138,12 @@ provide('chat-drawer-open', openDrawer)
 
 watch(
   () => route.query.thread_id,
-  (id) => {
+  (id, previousId) => {
     if (typeof id === 'string' && id.trim()) chatSessions.ensureSession(id)
+    else if (typeof previousId === 'string' && previousId.trim()) {
+      newThreadId.value = getNewThreadId()
+      chatSessions.markHistoryLoaded(newThreadId.value)
+    }
   },
   { immediate: true },
 )
@@ -153,15 +172,22 @@ function handleSend(message: {
   attachments: UploadedFileInfo[]
   request: ChatSendRequest
 }) {
-  chatSessions.ensureSession(threadId.value)
+  const currentThreadId = threadId.value
+  chatSessions.ensureSession(currentThreadId)
   chatSessions.titleFromMessage(
-    threadId.value,
+    currentThreadId,
     message.content.trim() || message.attachments[0]?.name || '',
   )
   messageHandler.value?.startChatTurn(message.content, {
     attachments: message.attachments,
     request: message.request,
   })
+  // 无路由 ID 的新对话发出首条消息后固定到该会话地址
+  if (!route.query.thread_id) {
+    void router.replace({ name: 'chat-index', query: { thread_id: currentThreadId } }).then(() => {
+      removeSessionStorage(NEW_THREAD_KEY)
+    })
+  }
 }
 
 function handleStop(): void {
