@@ -138,7 +138,7 @@ def configure_logging(
         handlers.append(file_handler)
 
     if queue_logs and handlers:
-        # 调用方只做入队，渲染与写盘交给后台线程
+        # 渲染与写盘交给后台线程
         log_queue: queue.SimpleQueue = queue.SimpleQueue()
         root_logger.addHandler(_StructlogQueueHandler(log_queue))
         _listener = QueueListener(log_queue, *handlers, respect_handler_level=True)

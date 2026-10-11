@@ -46,7 +46,7 @@ WHERE id = ?
 # 启动时把上次进程遗留的未完成轮次标为中断
 SQL_INTERRUPT_UNFINISHED_TURNS = "UPDATE chat_turn SET status = ? WHERE status = ?"
 
-# 取轮次所属会话与已落库用量，用于算增量
+# 取轮次所属会话与已落库用量
 SQL_SELECT_TURN_USAGE = """
 SELECT thread_id, usage_json
 FROM chat_turn
@@ -141,7 +141,7 @@ def _count(usage: dict[str, Any] | None, key: str) -> int:
     return max(value, 0)
 
 
-# 建会话并开一轮，返回轮次标识
+# 建会话并开一轮
 def start_turn(
     thread_id: str, question: str, attachments: Sequence[Mapping[str, Any]] = ()
 ) -> str:
@@ -217,7 +217,7 @@ def update_turn(
         conn.close()
 
 
-# 读会话列表，before 是上一页最后一条的（创建时间, 会话标识）
+# 读会话列表
 async def list_threads(
     limit: int,
     before: tuple[str, str] | None = None,

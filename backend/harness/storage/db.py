@@ -54,7 +54,7 @@ async def _add_missing_columns(conn: aiosqlite.Connection) -> None:
             await conn.execute(ddl)
 
 
-# 建目录并执行建表脚本，语句幂等所以每次启动都跑
+# 建目录并执行建表脚本，语句幂等
 async def init_history_db(path: str | Path | None = None) -> Path:
     db_path = resolve_db_path(path)
     db_path.parent.mkdir(parents=True, exist_ok=True)

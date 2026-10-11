@@ -21,15 +21,17 @@
 - 新增配置键要同步补 `config.example.yaml`；`Field(description=...)` 与 YAML 行内注释同一句话，注释列与相邻行对齐；`config_version` 不因加键 bump
 - `config.yaml` 不入版本控制且含真实密钥，核对只按行读指定键，不整文件 diff、不打印密钥行
 
-## 历史库
-- SQLite 文件路径取自 `system.db_path`（默认 `data/harness.db`），`journal_mode = WAL`，每条连接由 `session_pragmas()` 统一开启 `foreign_keys` 与 `busy_timeout`
-- 库文件的相对路径统一由 `harness/runtime/db_path.py:resolve_db_path` 按后端项目根展开，历史库和检查点库共用它，不受启动目录影响
-- DDL 唯一事实源在 `harness/storage/schema.py`，语句全部幂等，启动时在 lifespan 整段执行一遍 `SCHEMA_SCRIPT`
+## 数据库
+- 历史与检查点共用 `system.db_path`（默认 `data/harness.db`），`journal_mode = WAL`；历史库每条连接由 `session_pragmas()` 统一开启 `foreign_keys` 与 `busy_timeout`
+- 库文件的相对路径统一由 `harness/runtime/db_path.py:resolve_db_path` 按后端项目根展开，不受启动目录影响
+- 数据库启动入口在 `app/init_db.py`，集中初始化应用表 `chat_thread`、`chat_turn`、`slash_command` 和检查点表 `checkpoints`、`writes`
+- 历史表 DDL 唯一事实源在 `harness/storage/schema.py`，语句全部幂等，启动时执行一遍 `SCHEMA_SCRIPT`
+- 斜杠命令表 DDL 与初始数据由 `app/schemas/slash.py:init_slash_commands` 初始化，`app/init_db.py` 在启动时调用
 - 不记版本号、不做迁移链（不用 `user_version`）；给已存在的表改列要自己补 DDL 或删库重建
 - 建表失败直接抛出让启动失败，不静默降级成"没有历史功能"
 - 写历史走同步短事务（`connect_history_db`），写失败只 `logger.warning` 不打断回复
 - 读接口翻页一律 keyset 游标，不用 OFFSET 深度分页：会话按 `(created_at, id)`，轮次按 `seq`，游标参数只给一半返回 400
-- 检查点存 `memory.db_path`（默认 `data/checkpoints.db`），表由 `AsyncSqliteSaver.setup()` 自建自管，不进 `schema.py` 也不进 `SCHEMA_SCRIPT`，两条 DDL 互不相关
+- 检查点表由 `AsyncSqliteSaver.setup()` 在同一数据库中自建自管，不进 `schema.py` 也不进 `SCHEMA_SCRIPT`，两套 DDL 互不相关
 - 检查点只支持单进程写入（`aiosqlite` 长连接），多 worker 部署要换 postgres 版 saver
 - 节点内 `get_config()` 的 `checkpoint_ns` 是 `model:task_id`，读主代理历史要只传 `thread_id`；saver 的同步 `get_tuple` 在它自己的事件循环里会报错，只在异步包装里读
 

@@ -4,8 +4,9 @@
     <SlashCommandMenu
       v-if="isCommandMenuOpen"
       ref="commandMenuRef"
+      :command="selectedCommandName"
       :query="commandQuery ?? ''"
-      @select="selectCommand"
+      @select="selectMenuItem"
     />
     <div
       class="input-card"
@@ -13,7 +14,7 @@
       @dragenter="onDragEnter"
       @dragover="onDragOver"
       @dragleave="onDragLeave"
-      @drop="onFileDrop"
+      @drop.capture="onFileDrop"
     >
       <div v-if="isFileDragging" class="file-drop-hint" aria-hidden="true">松开以添加文件</div>
       <!-- 顶边手柄：外层透明命中区跨边框居中，内层胶囊悬停/聚焦才显形，双击恢复自动高度 -->
@@ -66,19 +67,28 @@
         />
       </div>
       <!-- 输入区 -->
-      <textarea
-        ref="textareaRef"
-        v-model="text"
-        class="input-textarea"
-        :style="textareaStyle"
-        rows="1"
-        placeholder="规划与编程，@ 添加上下文，/ 使用命令"
-        :aria-controls="isCommandMenuOpen ? 'slash-command-menu' : undefined"
-        :aria-expanded="isCommandMenuOpen"
-        aria-haspopup="listbox"
-        @input="onTextInput"
-        @keydown="onTextareaKeydown"
-      />
+      <div class="input-editor">
+        <button
+          v-if="selectedCommandName"
+          class="selected-command-tag"
+          type="button"
+          :aria-label="`继续输入命令 /${selectedCommandName}`"
+          @mousedown.prevent
+          @click="focusCommandInput"
+        >
+          /{{ selectedCommandName }}
+        </button>
+        <ChatComposerEditor
+          ref="composerRef"
+          v-model="text"
+          :placeholder="selectedCommandName ? '' : '规划与编程，@ 添加上下文，/ 使用命令'"
+          :has-command="Boolean(selectedCommandName)"
+          :command-menu-open="isCommandMenuOpen"
+          :manual-height="manualHeight"
+          @input="onTextInput"
+          @keydown="onComposerKeydown"
+        />
+      </div>
       <!-- 底部工具行 -->
       <div class="input-toolbar">
         <div class="toolbar-left">
@@ -333,10 +343,12 @@
             :class="{ 'is-responding': isResponding }"
             type="button"
             :aria-label="sendButtonLabel"
-            :disabled="!isResponding && (!text.trim() || streamLimited || hasUploadingFiles)"
+            :disabled="!isResponding && (!draftContent || streamLimited || hasUploadingFiles)"
             @click="onPrimaryAction"
           >
-            <Square v-if="isResponding" :size="12" fill="currentColor" :stroke-width="1.5" />
+            <span v-if="isResponding" class="send-spinner" aria-hidden="true">
+              <i v-for="tick in 12" :key="tick" :style="{ '--tick': tick }" />
+            </span>
             <ArrowUp v-else :size="15" :stroke-width="2.25" />
           </button>
         </div>
@@ -355,7 +367,6 @@ import {
   Info,
   Plus,
   ShieldCheck,
-  Square,
   TriangleAlert,
 } from 'lucide-vue-next'
 import { ElMessage, ElPopover, ElTooltip } from 'element-plus'
@@ -385,6 +396,7 @@ import {
   writeSessionStorage,
 } from '@/utils/sessionStorageUtil'
 import AttachmentCard from '@/views/chat/components/attachment/AttachmentCard.vue'
+import ChatComposerEditor from './ChatComposerEditor.vue'
 import EnergyField from './EnergyField.vue'
 import ModelInfoTip from './ModelInfoTip.vue'
 import SlashCommandMenu from './SlashCommandMenu.vue'
@@ -418,13 +430,24 @@ const text = ref('')
 const inputRootRef = ref<HTMLElement>()
 const commandMenuRef = ref<InstanceType<typeof SlashCommandMenu>>()
 const commandMenuDismissed = ref(false)
-// 仅输入斜杠命令时显示候选菜单
-const commandQuery = computed(() => text.value.match(/^\/([^\s]*)$/)?.[1] ?? null)
+const selectedCommandName = ref<string | null>(null)
+const draftContent = computed(() =>
+  selectedCommandName.value
+    ? `/${selectedCommandName.value} ${text.value}`.trim()
+    : text.value.trim(),
+)
+// 斜杠菜单查询词
+const commandQuery = computed(() => {
+  if (selectedCommandName.value) {
+    return /\s/.test(text.value) ? null : text.value
+  }
+  return text.value.match(/^\/([^\s]*)$/)?.[1] ?? null
+})
 const isCommandMenuOpen = computed(() => commandQuery.value !== null && !commandMenuDismissed.value)
 type PermissionMode = 'ask' | 'auto' | 'full'
 const permissionMode = ref<PermissionMode>('full')
 const isAccessMenuOpen = ref(false)
-const textareaRef = ref<HTMLTextAreaElement>()
+const composerRef = ref<InstanceType<typeof ChatComposerEditor>>()
 const sendButtonRef = ref<HTMLButtonElement>()
 const fileInputRef = ref<HTMLInputElement>()
 type SelectedFile = {
@@ -444,7 +467,7 @@ function attachmentDraftKey(threadId: string): string {
   return `chat:attachment-draft:${threadId}`
 }
 
-// 仅恢复已上传完成的附件，文件本体由后端保存
+// 仅恢复已上传完成的附件
 function restoreAttachments(threadId: string): SelectedFile[] {
   const value = readSessionStorage<unknown>(attachmentDraftKey(threadId))
   if (!Array.isArray(value)) return []
@@ -675,6 +698,7 @@ function onFileDrop(event: DragEvent) {
   isFileDragging.value = false
   if (!hasDraggedFiles(event) && files.length === 0) return
   event.preventDefault()
+  event.stopPropagation()
   addFiles(files)
 }
 
@@ -947,41 +971,45 @@ function dismissCommandMenuOutside(event: PointerEvent): void {
 
 function onTextInput(): void {
   commandMenuDismissed.value = false
-  autoResize()
 }
 
-function selectCommand(name: string): void {
-  text.value = `/${name} `
-  commandMenuDismissed.value = true
+function selectMenuItem(name: string): void {
+  if (selectedCommandName.value) {
+    text.value = `${name} `
+    commandMenuDismissed.value = true
+  } else {
+    selectedCommandName.value = name
+    text.value = ''
+    commandMenuDismissed.value = false
+  }
   void nextTick(() => {
-    autoResize()
-    const textarea = textareaRef.value
-    textarea?.focus()
-    textarea?.setSelectionRange(text.value.length, text.value.length)
+    composerRef.value?.focusAtEnd()
   })
+}
+
+// 聚焦命令输入框
+function focusCommandInput(): void {
+  commandMenuDismissed.value = false
+  composerRef.value?.focus()
+}
+
+// 移除已选命令
+function removeSelectedCommand(): void {
+  selectedCommandName.value = null
+  void nextTick(() => composerRef.value?.focus())
 }
 
 // 从消息操作栏重新编辑已发送的文字
 function setDraft(content: string): void {
+  selectedCommandName.value = null
   text.value = content
   commandMenuDismissed.value = true
   void nextTick(() => {
-    autoResize()
-    textareaRef.value?.focus()
-    textareaRef.value?.setSelectionRange(text.value.length, text.value.length)
+    composerRef.value?.focusAtEnd()
   })
 }
 
 defineExpose({ setDraft, chatOptions })
-
-/** 输入框随内容增高，超过上限后内部滚动 */
-function autoResize() {
-  const el = textareaRef.value
-  // 手动拖高期间不再跟随内容
-  if (!el || manualHeight.value !== null) return
-  el.style.height = 'auto'
-  el.style.height = `${Math.min(el.scrollHeight, 200)}px`
-}
 
 // 手动拖出的高度，null 表示仍随内容自动伸缩
 const manualHeight = ref<number | null>(null)
@@ -995,7 +1023,7 @@ let tapMoved = false
 // 本次手势的 pointerId，别的指针（如误触的鼠标）不参与拖动判定
 let activePointerId = -1
 
-// 自动高度的最小值，与 .input-textarea 的 min-height 一致
+// 自动高度的最小值，与编辑器样式一致
 const MIN_INPUT_HEIGHT = 56
 
 // 手动高度上限取视口一半，再高就把会话区顶没了
@@ -1003,20 +1031,13 @@ function maxInputHeight(): number {
   return Math.round(window.innerHeight * 0.5)
 }
 
-const textareaStyle = computed(() =>
-  manualHeight.value === null
-    ? undefined
-    : { height: `${manualHeight.value}px`, maxHeight: 'none' },
-)
-
 // 双击手柄回到随内容伸缩
 function resetInputHeight(): void {
   manualHeight.value = null
-  void nextTick(autoResize)
 }
 
 function onResizePointerDown(event: PointerEvent): void {
-  const el = textareaRef.value
+  const el = composerRef.value
   if (!el) return
   // 触屏没有 dblclick，300ms 内的第二次点按视为双击复位
   if (event.pointerType !== 'mouse' && Date.now() - lastTapAt < 300) {
@@ -1027,7 +1048,7 @@ function onResizePointerDown(event: PointerEvent): void {
   }
   tapMoved = false
   activePointerId = event.pointerId
-  const height = Math.round(el.getBoundingClientRect().height)
+  const height = Math.round(el.getHeight())
   manualHeight.value = height
   resizeStartY = event.clientY
   resizeStartHeight = height
@@ -1069,7 +1090,7 @@ function sendMessage() {
     commandMenuRef.value?.selectActive()
     return
   }
-  const content = text.value.trim()
+  const content = draftContent.value
   // 必须有文字才发，只有附件不算一次提问
   if (!content) return
   // 上传未完成或并发满了时保留草稿
@@ -1081,13 +1102,13 @@ function sendMessage() {
   }
   const attachments = selectedFiles.value.flatMap((item) => (item.uploaded ? [item.uploaded] : []))
   emit('send', { content, attachments, request: chatOptions.value })
+  selectedCommandName.value = null
   text.value = ''
   commandMenuDismissed.value = false
   selectedFiles.value = []
   saveAttachments()
   void nextTick(() => {
-    autoResize()
-    textareaRef.value?.focus()
+    composerRef.value?.focus()
   })
 }
 
@@ -1097,8 +1118,17 @@ function onPrimaryAction(): void {
   else sendMessage()
 }
 
-function onTextareaKeydown(event: KeyboardEvent): void {
+function onComposerKeydown(event: KeyboardEvent): void {
   if (event.isComposing || event.keyCode === 229) return
+  if (
+    selectedCommandName.value &&
+    event.key === 'Backspace' &&
+    composerRef.value?.isCursorAtStart()
+  ) {
+    event.preventDefault()
+    removeSelectedCommand()
+    return
+  }
   if (isCommandMenuOpen.value) {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
@@ -1218,20 +1248,29 @@ function onTextareaKeydown(event: KeyboardEvent): void {
   font-weight: 500;
   pointer-events: none;
 }
-.input-textarea {
-  display: block;
-  width: 100%;
-  min-height: 56px;
-  max-height: 200px;
-  padding: 12px 14px 4px;
-  border: none;
-  outline: none;
-  background: transparent;
-  resize: none;
-  line-height: 22px;
+.input-editor {
+  display: flex;
+  align-items: flex-start;
 }
-.input-textarea::placeholder {
-  color: #9ca3af;
+.selected-command-tag {
+  display: block;
+  flex: 0 0 auto;
+  max-width: min(40%, 200px);
+  height: 22px;
+  margin: 12px 0 0 14px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: #2858a4;
+  cursor: pointer;
+  line-height: 22px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.selected-command-tag:focus-visible {
+  outline: 2px solid #2858a4;
+  outline-offset: 2px;
 }
 .file-input {
   display: none;
@@ -1647,6 +1686,31 @@ function onTextareaKeydown(event: KeyboardEvent): void {
   color: #b0b0b0;
   cursor: default;
 }
+/* 回复中：小条围成一圈旋转 */
+.send-spinner {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  animation: send-spinner-turn 1.2s linear infinite;
+}
+.send-spinner i {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 2px;
+  height: 4px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0.75;
+  transform: rotate(calc(var(--tick) * 30deg));
+  transform-origin: 50% 8px;
+}
+@keyframes send-spinner-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
 @media (hover: hover) {
   .permission-trigger:hover {
     background: #eeeef0;
@@ -1669,6 +1733,13 @@ function onTextareaKeydown(event: KeyboardEvent): void {
   }
 }
 @media (any-pointer: coarse) {
+  .selected-command-tag {
+    min-height: 36px;
+    margin-top: 5px;
+    line-height: 36px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
   .permission-trigger {
     min-height: 36px;
   }
@@ -1705,12 +1776,6 @@ function onTextareaKeydown(event: KeyboardEvent): void {
   .effort-label {
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
-  }
-}
-/* iOS 聚焦时字号不足 16px 会整页放大 */
-@media (hover: none) {
-  .input-textarea {
-    font-size: 16px;
   }
 }
 /* 窄屏放不下整名模型，让模型名先省略 */

@@ -61,7 +61,7 @@ CREATE INDEX IF NOT EXISTS idx_chat_turn_thread ON chat_turn (thread_id, seq);
 # 早期的活动时间排序索引，现在不再使用
 DROP_INDEX_THREAD_UPDATED = "DROP INDEX IF EXISTS idx_chat_thread_updated;"
 
-# 启动时整段执行，语句全部幂等
+# 语句全部幂等
 SCHEMA_SCRIPT = "".join(
     (
         DDL_CHAT_THREAD,

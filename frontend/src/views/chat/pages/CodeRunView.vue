@@ -94,7 +94,7 @@ const props = withDefaults(
   defineProps<{
     /** 待运行的代码 */
     code?: string
-    /** 语言标识，决定高亮与缩进 */
+    /** 语言标识 */
     language?: string
   }>(),
   { code: '', language: 'python' },

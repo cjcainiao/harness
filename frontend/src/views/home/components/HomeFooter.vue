@@ -86,7 +86,7 @@ const columns: FooterGroup[][] = [
       items: [
         { label: '会话表' },
         { label: '轮次段落' },
-        { label: '检查点库' },
+        { label: '检查点表' },
         { label: '配置文件' },
       ],
     },

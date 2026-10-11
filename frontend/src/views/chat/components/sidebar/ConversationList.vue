@@ -1,7 +1,6 @@
 <!--会话历史列表-->
 <template>
   <div ref="listRef" class="conversation-list" @scroll="checkViewport">
-    <!-- 会话历史列表 -->
     <section v-for="group in groups" :key="group.label" class="history-group">
       <h4 class="group-label">{{ group.label }}</h4>
       <button

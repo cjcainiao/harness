@@ -68,7 +68,7 @@ def _with_source(
     return event
 
 
-# 开启历史轮次，失败时返回 None 表示本轮不入库
+# 开启历史轮次，失败时本轮不入库
 def _start_turn(thread_id: str, question: str, uploaded_files: Sequence[UploadedFileInfo]) -> str | None:
     try:
         return history.start_turn(thread_id, question, uploaded_files)

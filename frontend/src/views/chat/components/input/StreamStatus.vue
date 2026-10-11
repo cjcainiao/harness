@@ -39,7 +39,7 @@ const text = computed(() => {
 
 <style scoped>
 .stream-status {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 9px;
   box-sizing: border-box;
@@ -51,10 +51,8 @@ const text = computed(() => {
   font-size: 14px;
   font-weight: 500;
   line-height: 20px;
-  /* 常驻占位，避免输入卡随回复开始和结束上下跳 */
-  visibility: hidden;
 }
 .stream-status.is-active {
-  visibility: visible;
+  display: flex;
 }
 </style>

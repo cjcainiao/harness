@@ -88,7 +88,7 @@ class AttachmentMiddleware(AgentMiddleware[ThreadState]):
         if not valid_files:
             return {"uploaded_files": []}
 
-        # 保留原消息标识，供消息合并器替换本轮消息
+        # 保留原消息标识
         message = messages[-1]
         uploads_message = _uploads_message(valid_files)
         if isinstance(message.content, str):

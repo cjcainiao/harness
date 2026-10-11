@@ -4,10 +4,7 @@ import type { Ref } from 'vue'
 /** 走秒刷新间隔 */
 const TIMER_TICK_MS = 200
 
-/**
- * 执行中用本地时钟走秒，停下来就清掉定时器。
- * 用法：把"是否在跑"传进来，拿返回的 nowTick 参与耗时计算。
- */
+/** 执行中用本地时钟走秒，停下来就清掉定时器 */
 export function useLiveTimer(isLive: () => boolean): Ref<number> {
   const nowTick = ref(Date.now())
   let timerId: number | null = null

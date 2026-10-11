@@ -89,7 +89,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
   const turnsEnded = ref<Record<string, boolean>>({})
   // 每个会话是否正在拉更早的轮次
   const turnsLoading = ref<Record<string, boolean>>({})
-  // 每个会话收到的事件条数，视图用它决定是否跟到最新
+  // 每个会话收到的事件条数
   const streamTicks = ref<Record<string, number>>({})
   // 正在回复的会话，侧边栏动画用
   const respondingThreadIds = ref<Set<string>>(new Set())
@@ -451,7 +451,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     if (turn) turn.feedback = feedback
   }
 
-  // 本轮有推荐问题时才写入，完成后展示在回复操作区下方
+  // 本轮有推荐问题时才写入
   function setFollowUpQuestions(turnId: string, questions: string[]): boolean {
     const turn = findTurn(turnId)
     if (!turn) return false

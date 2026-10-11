@@ -20,7 +20,7 @@ async def init_checkpointer() -> AsyncSqliteSaver | None:
     if not memory.enabled:
         return None
 
-    target = resolve_db_path(memory.db_path)
+    target = resolve_db_path()
     target.parent.mkdir(parents=True, exist_ok=True)
 
     conn = await aiosqlite.connect(target)

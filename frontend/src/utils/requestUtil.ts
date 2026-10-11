@@ -5,19 +5,14 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from 'axios'
 
-/**
- * 后端统一响应结构。
- * 流式接口不经过这个封装，仍然直接处理 SSE 事件。
- */
+/** 后端统一响应结构 */
 export interface ApiResult<T = unknown> {
   code: number
   message: string
   data: T | null
 }
 
-/**
- * 统一的请求错误，方便页面层按 status/code 做提示或跳转。
- */
+/** 统一的请求错误 */
 export class RequestError extends Error {
   readonly status?: number
   readonly code?: number | string
@@ -42,10 +37,7 @@ export class RequestError extends Error {
   }
 }
 
-/**
- * Axios 请求配置扩展。
- * skipAuth 为后续接入登录态预留，当前项目还没有认证接口。
- */
+/** Axios 请求配置扩展，skipAuth 为后续接入登录态预留 */
 export interface RequestConfig<D = unknown> extends AxiosRequestConfig<D> {
   skipAuth?: boolean
 }
@@ -132,10 +124,7 @@ export class RequestUtil {
     return this.unwrap<T>(this.client.delete<T, T>(url, config))
   }
 
-  /**
-   * Axios 类型定义保留原始响应类型，而响应拦截器运行时已返回 response.data。
-   * 在这里统一收口，避免每个请求方法重复类型断言。
-   */
+  /** 拦截器运行时已返回 response.data，这里统一收口类型断言 */
   private unwrap<T>(request: Promise<unknown>): Promise<T> {
     return request as Promise<T>
   }

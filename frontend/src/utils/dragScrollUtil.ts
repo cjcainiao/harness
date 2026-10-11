@@ -1,9 +1,6 @@
 import { ref } from 'vue'
 
-/**
- * 单排横向列表的拖动滚动：鼠标左键按住拖动，触屏保留原生滑动。
- * 用法：容器绑定 scrollRef 和 handlers，并用 isDragging 切换 grab/grabbing 光标。
- */
+/** 单排横向列表的拖动滚动：鼠标左键按住拖动，触屏保留原生滑动 */
 export function useDragScroll() {
   const scrollRef = ref<HTMLElement>()
   const isDragging = ref(false)

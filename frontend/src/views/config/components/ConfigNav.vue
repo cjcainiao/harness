@@ -49,7 +49,7 @@ interface NavGroup {
   items: NavItem[]
 }
 
-// 导航分组，routeName 对应 router/modules/config.ts 的子路由
+// 导航分组
 const navGroups: NavGroup[] = [
   {
     label: '个人',

@@ -222,10 +222,7 @@ function isChatStreamEvent(value: unknown): value is ChatStreamEvent {
   )
 }
 
-/**
- * 发起一次流式对话。
- * 页面隐藏时保持连接，失败不自动重连，避免重复触发同一轮执行。
- */
+/** 发起一次流式对话，失败不重连，避免重复触发同一轮执行 */
 export function streamChat(
   request: ChatStreamRequest,
   handlers: ChatStreamHandlers,

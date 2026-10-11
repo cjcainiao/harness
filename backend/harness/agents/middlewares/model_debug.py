@@ -24,7 +24,7 @@ def _dumps(payload: Any) -> str:
     return json.dumps(payload, ensure_ascii=False, default=str)
 
 
-# 工具定义转成模型看到的函数声明
+# 工具定义转成函数声明
 def _tool_payload(tool: BaseTool | dict[str, Any]) -> Any:
     return tool if isinstance(tool, dict) else convert_to_openai_function(tool)
 

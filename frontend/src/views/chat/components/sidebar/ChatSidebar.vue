@@ -106,7 +106,7 @@
         </div>
       </ElPopover>
     </footer>
-    <!-- 搜索弹窗，Teleport 到 body，不受侧栏收起时的 inert 影响 -->
+    <!-- 搜索弹窗 -->
     <ConversationSearch v-model:visible="searchVisible" />
   </aside>
 </template>
@@ -436,7 +436,7 @@ function startNewConversation(): void {
     min-height: 48px;
   }
 }
-/* 气泡挂在 body 上，宽度由 settingsPopperStyle 按视口计算 */
+/* 气泡挂在 body 上 */
 :global(.sidebar-settings-popper) .settings-option-title {
   white-space: nowrap;
 }

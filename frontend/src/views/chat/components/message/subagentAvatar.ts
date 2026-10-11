@@ -1,5 +1,4 @@
 // 子代理彩色徽标：按名字稳定取色取形，产出可直接当图片地址的 SVG data URI
-// 取形取色照 Qoder 生成式头像的浅色档搬过来，深色档那张表格整块不要；调色再加一层鲜艳档下限
 
 /** 色位，顺序即调色时的遍历顺序 */
 type PaletteSlot = 'base' | 'lobe' | 'accent' | 'pale' | 'light' | 'warm' | 'cool' | 'dark' | 'beam'

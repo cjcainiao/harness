@@ -17,7 +17,7 @@ _T = TypeVar("_T")
 INHERIT_TOOLS = "inherit"
 
 
-# 子代理定义，配置里的 use 指向它；名称由配置登记，这里不重复
+# 子代理定义
 @dataclass(frozen=True)
 class SubagentDefinition:
     description: str

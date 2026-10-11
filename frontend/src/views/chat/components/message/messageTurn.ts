@@ -165,10 +165,7 @@ function asDelegationHost(item: TurnItem): ToolItem | undefined {
   return item.subagent !== undefined && item.delegationId === undefined ? item : undefined
 }
 
-/**
- * 主流程显示项转渲染分组：只合并相邻工具，委派收进卡片。
- * partsOf 给实时路径按委派标识取桶；还原路径的子项混在同一份列表里，按标识归拢。
- */
+/** 主流程显示项转渲染分组：只合并相邻工具，委派收进卡片 */
 export function groupItems(
   renderItems: TurnItem[],
   partsOf?: (host: ToolItem) => TurnItem[] | undefined,

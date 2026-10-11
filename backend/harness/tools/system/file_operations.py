@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from harness.tools.tool_settings import get_tool_settings
 
 
-# 按候选编码依次解码文本，全部失败返回 None
+# 按候选编码依次解码文本
 def _decode_text(raw: bytes) -> str | None:
     for encoding in ("utf-8", "gbk"):
         try:
@@ -47,7 +47,7 @@ class ReadFileArgs(BaseModel):
     # 起始行号
     offset: int = Field(default=1, ge=1, description="起始行号，从 1 开始；未提供时从第一行读起")
 
-    # 单个文件的读取行数上限，未提供时用配置 settings 的默认值
+    # 单个文件的读取行数上限
     limit: int | None = Field(
         default=None,
         gt=0,
@@ -122,7 +122,7 @@ class ListDirArgs(BaseModel):
         description="本地目录路径列表，绝对或相对工作目录，一次可传多个",
     )
 
-    # 单个目录的返回条目数上限，未提供时用配置 settings 的默认值
+    # 单个目录的返回条目数上限
     max_entries: int | None = Field(
         default=None,
         gt=0,

@@ -8,12 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.exceptions import register_exception_handlers
 from app.gateway import chat_router, config_router, history_router, slash_router, uploads_router
+from app.init_db import initialize_database
+from harness.agents.memory.checkpointer import shutdown_checkpointer
 from harness.config.app_config import get_app_config
 from harness.core.logger import get_logger, shutdown_logging
-from harness.agents.memory.checkpointer import init_checkpointer, shutdown_checkpointer
-from harness.runtime.db_path import resolve_db_path
-from harness.storage import history
-from harness.storage.db import init_history_db
 
 
 logger = get_logger(__name__)
@@ -25,21 +23,8 @@ async def lifespan(app: FastAPI):
     config = get_app_config()
     logger.info("应用启动中", app_name=config.system.app_name, env=config.system.env)
     try:
-        # 表结构已是最新时只做一次存在性检查
-        db_path = await init_history_db()
-        history.interrupt_unfinished_turns()
-        logger.info("历史库已就绪", path=str(db_path))
-
-        # 检查点写磁盘文件，进程重启后同一会话仍能延续
-        checkpointer = await init_checkpointer()
-        if checkpointer is None:
-            logger.info("检查点记忆已关闭")
-        else:
-            logger.info(
-                "检查点库已就绪",
-                path=str(resolve_db_path(config.memory.db_path)),
-                durability=config.memory.durability,
-            )
+        # 初始化历史与检查点表
+        await initialize_database()
         yield
     finally:
         logger.info("应用关闭中", app_name=config.system.app_name)
@@ -73,7 +58,7 @@ def create_app() -> FastAPI:
     application.include_router(slash_router, prefix=api_prefix)
     application.include_router(uploads_router, prefix=api_prefix)
 
-    # CORS 配置，解决跨域问题
+    # CORS 配置
     application.add_middleware(
         CORSMiddleware,
         allow_origins=config.system.allow_origins,

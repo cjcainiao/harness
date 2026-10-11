@@ -26,7 +26,7 @@ TOOL_SUB_TYPES = frozenset({"tool_start", "tool_result", "tool_error"})
 ARGUMENTS_LIMIT = 120
 
 
-# 委派入参，runtime 由框架注入，不暴露给模型
+# 委派入参
 class TaskArgs(BaseModel):
     model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
 
@@ -109,7 +109,7 @@ def _conclusion(messages: list[Any]) -> str:
     return ""
 
 
-# 边读边转发子代理事件，返回它跑完的消息轨迹
+# 边读边转发子代理事件
 async def _collect(
     subagent: Any,
     prompt: str,
@@ -138,7 +138,7 @@ async def _collect(
                         {"content": payload["content"]},
                     )
                 elif payload_type == "usage":
-                    # 用量原样转发，不带委派标记，父子按同一口径累加进本轮
+                    # 用量原样转发，不带委派标记
                     runtime.stream_writer(payload)
 
         elif mode == "custom" and isinstance(data, dict):
@@ -160,7 +160,7 @@ def _error_text(error: BaseException) -> str:
     return str(error) or error.__class__.__name__
 
 
-# 执行一次委派，过程实时播报，只返回最终交付物
+# 执行一次委派，过程实时播报
 async def _delegate(agent: str, prompt: str, runtime: ToolRuntime) -> dict[str, str]:
     config = get_subagent_config(agent)
     model_name, thinking_enabled, reasoning_effort = _turn_model(runtime)
@@ -180,7 +180,7 @@ async def _delegate(agent: str, prompt: str, runtime: ToolRuntime) -> dict[str, 
             timeout=config.timeout_seconds,
         )
     except TimeoutError as error:
-        # 超时原本的 str() 是空的，直接上抛会让模型看到空白错误
+        # 超时原本的 str() 是空的
         message = f"子代理执行超时：{config.timeout_seconds} 秒"
         _emit(runtime, config.name, "error", {"message": message})
         raise TimeoutError(message) from error

@@ -7,9 +7,9 @@ from typing import Any
 from langchain_core.messages import ToolMessage
 
 
-# 把一条流式消息翻成事件列表，来源标记由调用方补
+# 把一条流式消息翻成事件列表
 def parse_message_events(message: Any) -> list[dict[str, Any]]:
-    # 工具结果由工具调用中间件发送
+    # 工具结果不生成事件
     if isinstance(message, ToolMessage):
         return []
 

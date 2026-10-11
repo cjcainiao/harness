@@ -15,7 +15,6 @@ import { copyToClipboard } from '@/utils/clipboardUtil'
 
 const props = defineProps<{ content: string }>()
 
-// 打开抽屉的方法
 type OpenDrawer = (page: Component, title: string, pageProps?: Record<string, unknown>) => void
 const openDrawer = inject<OpenDrawer | null>('chat-drawer-open', null)
 

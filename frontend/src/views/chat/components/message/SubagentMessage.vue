@@ -197,8 +197,7 @@ const timerText = computed(() => {
   }
 }
 
-/* 水波：两层同周期的正弦水面横向流动，
-   深色水体垫底、亮色浪线走反方向，叠出起伏 */
+/* 水波：两层同周期的正弦水面横向流动，叠出起伏 */
 .delegation-avatar::before,
 .delegation-avatar::after {
   content: '';

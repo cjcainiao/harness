@@ -74,7 +74,7 @@ interface ModeOption {
   label: string
 }
 
-// 接口返回的单日用量，date 为 YYYY-MM-DD
+// 单日用量
 interface ActivityDay {
   date: string
   tokens: number
@@ -85,7 +85,7 @@ interface Props {
   loading?: boolean
 }
 
-// 用法：<TokenActivityCard :days="usageDays" :loading="pending" />，不传则显示空格阵
+// 不传则显示空格阵
 const props = withDefaults(defineProps<Props>(), { days: () => [], loading: false })
 
 const modeOptions: ModeOption[] = [

@@ -1,6 +1,6 @@
 // 剪贴板写入工具
 
-/** 写入剪贴板，非 HTTPS 环境没有 clipboard API，退回 execCommand，返回是否成功 */
+/** 写入剪贴板，非 HTTPS 环境没有 clipboard API，退回 execCommand */
 export async function copyToClipboard(text: string): Promise<boolean> {
   try {
     if (navigator.clipboard?.writeText) {

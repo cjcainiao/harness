@@ -22,7 +22,9 @@
         :size="attachment.size"
       />
     </div>
-    <div v-if="content" class="message-text">{{ content }}</div>
+    <div v-if="content" class="message-text">
+      <ChatComposerEditor :model-value="content" readonly />
+    </div>
     <div class="message-actions">
       <time v-if="sentTime" :datetime="sentDateTime" class="message-time">{{ sentTime }}</time>
       <ElTooltip
@@ -77,6 +79,7 @@ import type { ChatAttachment } from './messageTurn'
 import { useDragScroll } from '@/utils/dragScrollUtil'
 import { copyToClipboard } from '@/utils/clipboardUtil'
 import AttachmentCard from '@/views/chat/components/attachment/AttachmentCard.vue'
+import ChatComposerEditor from '@/views/chat/components/input/ChatComposerEditor.vue'
 
 // 附件条只占一排，超出用横向拖动滚动，触屏交给原生滑动
 const {
@@ -87,7 +90,6 @@ const {
   onPointerUp: onAttachmentsPointerUp,
 } = useDragScroll()
 
-// 显示当前 turn 的用户文字和附件
 const props = withDefaults(
   defineProps<{ content: string; attachments?: ChatAttachment[]; createdAt?: number }>(),
   {
@@ -179,7 +181,6 @@ onUnmounted(() => window.clearTimeout(copiedTimer))
   padding: 10px 14px;
   border-radius: 10px;
   background: #f4f4f5;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .attachment-list {

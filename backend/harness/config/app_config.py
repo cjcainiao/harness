@@ -33,7 +33,7 @@ class AppConfig(ToolConfig):
     # 解析配置文件路径，优先级：参数 > 环境变量 > 默认路径
     @classmethod
     def resolve_config_path(cls, config_path: str | None = None) -> Path:
-        # 1. 调用方显式指定的路径
+        # 1. 显式指定的路径
         if config_path:
             path = Path(config_path)
             if not path.exists():
@@ -188,7 +188,7 @@ def reload_app_config(config_path: str | None = None) -> AppConfig:
     return _load_and_cache_app_config(config_path)
 
 
-# 清空配置缓存，下次 get_app_config 会重新读文件
+# 清空配置缓存
 def reset_app_config() -> None:
     global _app_config, _app_config_path, _app_config_mtime, _app_config_is_custom
     _app_config = None

@@ -76,7 +76,7 @@ class TurnInfo(BaseModel):
     usage: UsageInfo | None = Field(default=None, description="本轮累计用量")
 
 
-# 会话列表，游标指向上一页最后一条
+# 会话列表
 @router.get("/threads", summary="获取会话列表")
 async def get_threads(
     limit: int = Query(default=50, ge=1, le=200, description="返回条数上限"),
@@ -100,7 +100,7 @@ async def get_threads(
     return Result.success(threads)
 
 
-# 会话内的历史轮次，游标是已加载最早一轮的序号
+# 会话内的历史轮次
 @router.get("/threads/{thread_id}/turns", summary="获取会话历史轮次")
 async def get_thread_turns(
     thread_id: str = Path(min_length=1, max_length=128, description="会话标识"),

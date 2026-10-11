@@ -56,9 +56,9 @@ USER app
 # 监听地址和端口取自镜像内 config.yaml 的 system.host/port，必须是 0.0.0.0
 EXPOSE 8000
 
-# 健康检查，/health 不在 api 前缀下
+# 健康检查，/health 不在 api 前缀下；探活通过后落标记，不再发请求
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:8000/health || exit 1
+    CMD test -f /tmp/health-ok || { curl -fsS http://127.0.0.1:8000/health && touch /tmp/health-ok; }
 
 # 正式启动，等价 make start，但不在运行时同步依赖
 CMD ["python", "-m", "app.main"]

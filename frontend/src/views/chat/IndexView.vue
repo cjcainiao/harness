@@ -115,7 +115,7 @@ const sessionTitle = computed(
 watch(sessionTitle, (title) => setPageTitle(title), { immediate: true })
 // 按当前 thread 汇总累计 Token 用量
 const sessionUsage = computed(() => chatSessions.getUsage(threadId.value))
-// 本会话已有的轮数，换模型时决定要不要先提示影响
+// 本会话已有的轮数
 const historyTurns = computed(() => chatSessions.getTurns(threadId.value).length)
 
 // 抽屉里嵌入的页面，为空即关闭
@@ -219,8 +219,24 @@ function handleFollowUp(question: string): void {
   height: 100%;
 }
 .chat-messages {
+  position: relative;
   flex: 1;
   min-height: 0;
+}
+.chat-messages::after {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 28px;
+  background: linear-gradient(to bottom, transparent, #fff);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000);
+  mask-image: linear-gradient(to bottom, transparent, #000);
+  pointer-events: none;
 }
 .chat-bottom {
   flex-shrink: 0;
