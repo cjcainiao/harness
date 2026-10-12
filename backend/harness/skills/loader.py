@@ -50,15 +50,30 @@ def read_frontmatter(raw: str) -> str | None:
 def read_skill(skill_dir: Path, source: str) -> Skill | None:
     config = get_app_config().skills
 
+    if skill_dir.is_symlink() or skill_dir.is_junction():
+        logger.warning("技能目录是链接，跳过", dir=str(skill_dir))
+        return None
     skill_file = skill_dir / config.file
     if not skill_file.is_file():
         logger.warning("技能目录缺少主文件，跳过", dir=str(skill_dir), file=config.file)
         return None
+    if skill_file.is_symlink() or skill_file.is_junction():
+        logger.warning("技能主文件是链接，跳过", path=str(skill_file))
+        return None
 
     try:
-        raw = skill_file.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as error:
+        with skill_file.open("rb") as file:
+            raw_bytes = file.read(config.max_skill_file_bytes + 1)
+    except OSError as error:
         logger.warning("技能主文件读取失败，跳过", path=str(skill_file), error=str(error))
+        return None
+    if len(raw_bytes) > config.max_skill_file_bytes:
+        logger.warning("技能主文件超字节上限，跳过", path=str(skill_file), limit=config.max_skill_file_bytes)
+        return None
+    try:
+        raw = raw_bytes.decode("utf-8")
+    except UnicodeDecodeError as error:
+        logger.warning("技能主文件无法按 UTF-8 读取，跳过", path=str(skill_file), error=str(error))
         return None
 
     frontmatter = read_frontmatter(raw)
@@ -76,15 +91,17 @@ def read_skill(skill_dir: Path, source: str) -> Skill | None:
         logger.warning("技能 frontmatter 不是键值结构，跳过", path=str(skill_file))
         return None
 
-    name = str(meta.get("name") or "").strip()
-    description = str(meta.get("description") or "").strip()
-    if not name or not description:
+    name = meta.get("name")
+    description = meta.get("description")
+    if not isinstance(name, str) or not name.strip() or not isinstance(description, str) or not description.strip():
         logger.warning("技能缺少 name 或 description，跳过", path=str(skill_file))
         return None
+    name = name.strip()
+    description = description.strip()
     if name != skill_dir.name:
         logger.warning("技能 name 与目录名不一致，跳过", name=name, dir=skill_dir.name)
         return None
-    if not re.match(config.name_pattern, name):
+    if re.fullmatch(config.name_pattern, name) is None:
         logger.warning("技能 name 字符集不合规，跳过", name=name, pattern=config.name_pattern)
         return None
     if len(description) > config.description_limit:
@@ -104,7 +121,7 @@ def read_skill(skill_dir: Path, source: str) -> Skill | None:
     )
 
 
-# 解析技能根目录绝对路径
+# 技能根目录路径
 def resolve_skills_dir() -> Path:
     target = Path(get_app_config().skills.dir)
     if not target.is_absolute():
@@ -112,7 +129,7 @@ def resolve_skills_dir() -> Path:
     return target
 
 
-# 扫描分类目录，取技能名单
+# 分类技能扫描
 def load_skills() -> list[Skill]:
     config = get_app_config().skills
     if not config.enabled:
@@ -126,13 +143,16 @@ def load_skills() -> list[Skill]:
     found: dict[str, Skill] = {}
     for category in config.categories:
         category_dir = root / category
+        if category_dir.is_symlink() or category_dir.is_junction():
+            logger.warning("技能分类目录是链接，跳过", dir=str(category_dir))
+            continue
         if not category_dir.is_dir():
             continue
 
         for item in sorted(category_dir.iterdir()):
-            # 符号链接目录不跟随
-            if item.is_symlink():
-                logger.warning("技能目录是符号链接，跳过", dir=str(item))
+            # 链接目录不跟随
+            if item.is_symlink() or item.is_junction():
+                logger.warning("技能目录是链接，跳过", dir=str(item))
                 continue
             # 点前缀目录为已停用
             if not item.is_dir() or item.name.startswith("."):
@@ -161,7 +181,7 @@ def skills_section(skills: list[Skill], *, describe_skill_enabled: bool) -> str:
     if not skills:
         return ""
 
-    # 技能发现工具可用时只列名称
+    # 技能发现模式名单
     if describe_skill_enabled:
         names = "\n".join(f"- {skill.name}" for skill in skills)
         return (
@@ -170,7 +190,7 @@ def skills_section(skills: list[Skill], *, describe_skill_enabled: bool) -> str:
             f"<skill_index>\n{names}\n</skill_index>"
         )
 
-    # 技能发现工具不可用时列出完整元数据
+    # 完整技能元数据名单
     listing = "\n".join(
         f"- {skill.name}: {skill.description}\n  说明文档：{skill.path}" for skill in skills
     )

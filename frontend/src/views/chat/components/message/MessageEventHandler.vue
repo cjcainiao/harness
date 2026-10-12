@@ -20,7 +20,11 @@
           />
           <div class="turn-reply">
             <div v-for="item in turn.displayItems" :key="item.id" class="message-item">
-              <MessageChunk v-if="item.type === 'message_chunk'" :content="item.content" />
+              <MessageChunk
+                v-if="item.type === 'message_chunk'"
+                :content="item.content"
+                :streaming="turn.status === 'streaming' && item.id === turn.lastItemId"
+              />
               <MessageReasoning
                 v-else-if="item.type === 'reasoning'"
                 :content="item.content"

@@ -241,6 +241,16 @@ tools:
       max_redirects: 3 # 最多重定向次数
     } # 工具额外配置
 
+  - name: install_skill # 工具名称
+    group: network # 所属工具组
+    use: harness.tools.network.install_skill:install_skill # 工具实现
+    enabled: true # 是否启用
+    aliases: [安装技能, 安装第三方技能, 下载技能] # 查找别名
+    settings: {
+      timeout_seconds: 30, # 请求超时秒数
+      max_redirects: 3 # 最多重定向次数
+    } # 工具额外配置
+
 # 技能配置
 skills:
   enabled: true          # 是否启用技能
@@ -249,6 +259,10 @@ skills:
   categories: [custom, public] # 技能分类目录，靠前的优先
   name_pattern: '^[a-z0-9][a-z0-9-]*$' # 技能名字符集
   description_limit: 1024 # 描述字数上限
+  max_download_bytes: 104857600 # 技能压缩包文件字节上限
+  max_archive_entries: 10000 # 技能压缩包条目数量上限
+  max_unpacked_bytes: 524288000 # 技能压缩包解压字节上限
+  max_skill_file_bytes: 1048576 # 技能主文件字节上限
 
 # 子代理配置
 subagents:

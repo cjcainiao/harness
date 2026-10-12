@@ -55,7 +55,7 @@
 - 根目录下按 `skills.categories` 分分类目录，`custom` 放项目自己写的技能（入版本控制），`public` 放第三方装进来的（`.gitignore` 掉），靠前的分类优先
 - 一个技能一个目录，目录内必须有 `skills.file`（默认 `SKILL.md`）；放进目录即启用，目录名加 `.` 前缀即停用，不留第二份启用状态
 - frontmatter 只写 `name` 和 `description`：`name` 必须等于所在目录名，字符集取自 `skills.name_pattern`（默认小写字母、数字与连字符）；`description` 说清做什么与何时使用，上限取自 `skills.description_limit`（默认 1024 字）
-- 三个可选子目录按用途固定：`scripts/` 放可执行代码，`references/` 放文档资料，`assets/` 放模板与静态资源；代码文件不进 `assets/`
+- 三个可选子目录按用途固定：`scripts/` 放可执行代码，`references/` 放文档资料，`assets/` 放模板与静态资源；代码文件不进 `assets/`。第三方技能可以没有这些目录，安装校验不检查正文提到的文件是否存在
 - `SKILL.md` 正文只写判断和执行顺序，细节一律推到 `references/`，建议 60 行以内
 - 渐进披露：`describe_skill` 启用时提示词只注入技能名，模型查询描述和路径后用 `read_file` 取正文；停用时提示词注入技能名、描述和主文件绝对路径
 - 可用技能按分类优先级和分类内名称排序后全部写入提示词名单

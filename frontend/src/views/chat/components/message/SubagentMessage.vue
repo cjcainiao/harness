@@ -16,7 +16,11 @@
 
     <div v-if="open" ref="body" class="delegation-body">
       <div v-for="item in parts" :key="item.id" class="delegation-item">
-        <MessageChunk v-if="item.type === 'message_chunk'" :content="item.content" />
+        <MessageChunk
+          v-if="item.type === 'message_chunk'"
+          :content="item.content"
+          :streaming="isRunning && item.id === lastPartId"
+        />
         <MessageReasoning
           v-else-if="item.type === 'reasoning'"
           :content="item.content"

@@ -48,6 +48,8 @@ const emit = defineEmits<{
 const hostRef = ref<HTMLElement | null>(null)
 const accessibilityConfig = new Compartment()
 let view: EditorView | null = null
+
+// 外部同步时阻断重复回写
 let applyingModelValue = false
 
 // 提示文案交给伪元素，文档里不留可跨越的对象
@@ -206,6 +208,7 @@ const emptyLinePlugin = ViewPlugin.fromClass(
   { decorations: (plugin) => plugin.decorations },
 )
 
+// 输入框无障碍属性切换
 function contentAttributes(): Record<string, string> {
   if (props.readonly) return { 'aria-label': '消息内容' }
   return {
@@ -247,6 +250,7 @@ onBeforeUnmount(() => {
   view = null
 })
 
+// 外部内容同步至编辑器
 watch(
   () => props.modelValue,
   (value) => {

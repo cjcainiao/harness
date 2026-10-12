@@ -9,7 +9,9 @@ import { computed } from 'vue'
 
 const props = defineProps<{ content: string }>()
 
-// 禁用原始 HTML，避免内容作为页面元素插入
+// 消息正文 HTML 禁用
 const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true })
 const renderedHtml = computed(() => markdown.render(props.content))
 </script>
+
+<style scoped></style>

@@ -55,12 +55,13 @@ onUnmounted(() => renderer?.destroy())
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+// 顶点着色器
 const VERTEX = `#version 300 es
 in vec2 a_position;
 out vec2 v_uv;
 void main(){v_uv=a_position*0.5+0.5;gl_Position=vec4(a_position,0.0,1.0);}`
 
-// 按像素计算动画速度，轨道宽度变化时保持传播速度一致
+// 像素恒速能量模拟与分档残影
 const ENERGY_SIMULATION = `#version 300 es
 precision highp float;
 in vec2 v_uv;
@@ -97,9 +98,6 @@ void main(){
 
   vec3 history=texture(u_previous,coordinate).rgb;
   float leftFade=smoothstep(0.0,0.45,coordinate.x);
-  // Long feedback trails are part of the sustained Max burn. On intermediate
-  // levels they visually stack successive cells into a sheet, so retain only
-  // a very short afterimage while the injection passes.
   float feedbackRetention=mix(0.18,0.90,smoothstep(0.90,1.0,u_ratio));
   vec3 retained=history*feedbackRetention*leftFade;
   float enabled=smoothstep(0.001,0.05,u_intensity);
@@ -199,6 +197,7 @@ void main(){
   outputColor=vec4(mix(dynamicColor,settledColor*settledCells,settleProgress),1.0);
 }`
 
+// 双向模糊着色器
 const BLUR = `#version 300 es
 precision highp float;
 in vec2 v_uv;
@@ -224,6 +223,7 @@ void main(){
   outputColor=vec4(color,1.0);
 }`
 
+// 场景与辉光合成
 const COMPOSITE = `#version 300 es
 precision highp float;
 in vec2 v_uv;
@@ -262,6 +262,7 @@ interface Target {
   texture: WebGLTexture
 }
 
+// WebGL 资源初始化
 function mountEnergyRenderer(
   canvas: HTMLCanvasElement,
   initialState: EnergyState,
@@ -373,6 +374,7 @@ function mountEnergyRenderer(
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0)
     return { framebuffer, texture }
   }
+  // 帧缓冲纹理重建
   const resize = () => {
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     const width = Math.max(1, Math.round(canvas.clientWidth * dpr))
@@ -396,6 +398,7 @@ function mountEnergyRenderer(
       gl.clear(gl.COLOR_BUFFER_BIT)
     })
   }
+  // 能量模拟与辉光绘制
   const draw = (now: number) => {
     if (!running) return
     resize()
@@ -418,6 +421,7 @@ function mountEnergyRenderer(
     gl.viewport(0, 0, canvas.width, canvas.height)
     gl.bindVertexArray(vao)
 
+    // 能量场写入场景纹理
     gl.bindFramebuffer(gl.FRAMEBUFFER, scene.framebuffer)
     gl.useProgram(simulation)
     gl.activeTexture(gl.TEXTURE0)
@@ -432,6 +436,7 @@ function mountEnergyRenderer(
     gl.uniform3f(sim.color, red, green, blue)
     gl.drawArrays(gl.TRIANGLES, 0, 6)
 
+    // 横向与纵向辉光
     gl.useProgram(blur)
     gl.uniform2f(locations.blurResolution, canvas.width, canvas.height)
     gl.uniform1f(locations.blurRadius, 1.8)
@@ -448,6 +453,7 @@ function mountEnergyRenderer(
     gl.uniform1f(locations.blurRejectDim, 0)
     gl.drawArrays(gl.TRIANGLES, 0, 6)
 
+    // 场景与辉光输出
     gl.bindFramebuffer(gl.FRAMEBUFFER, null)
     gl.useProgram(composite)
     gl.activeTexture(gl.TEXTURE0)
@@ -460,6 +466,7 @@ function mountEnergyRenderer(
     gl.drawArrays(gl.TRIANGLES, 0, 6)
     targets[0] = scene
     targets[1] = back
+    // 静止后停止逐帧绘制
     if (inactive < 150) frame = requestAnimationFrame(draw)
     else running = false
   }

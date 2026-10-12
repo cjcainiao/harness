@@ -79,6 +79,7 @@ const loadError = ref('')
 const activeIndex = ref(0)
 const rowRefs = ref<Array<HTMLElement | null>>([])
 
+// 请求防抖与旧请求取消
 watch(
   () => [props.command, props.query] as const,
   ([command, query], _previous, onCleanup) => {
