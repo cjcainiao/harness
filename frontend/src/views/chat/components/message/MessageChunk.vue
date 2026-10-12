@@ -111,9 +111,12 @@ const iconUp = `<svg class="icon-up" ${iconAttrs}><path d="m18 15-6-6-6 6"/></sv
 const iconDown = `<svg class="icon-down" ${iconAttrs}><path d="m6 9 6 6 6-6"/></svg>`
 const iconRun = `<svg class="icon-run" ${iconAttrs}><polygon points="5 3 19 12 5 21 5 3"/></svg>`
 const iconExport = `<svg class="icon-export" ${iconAttrs}><path d="M12 3v12m-5-5 5 5 5-5"/><path d="M4 17v3h16v-3"/></svg>`
+const iconCode = `<svg class="icon-code" ${iconAttrs}><path d="m8 17-5-5 5-5m8 0 5 5-5 5m-5-14-2 18"/></svg>`
+const iconDiagram = `<svg class="icon-diagram" ${iconAttrs}><rect x="2" y="3" width="7" height="6" rx="1"/><rect x="15" y="3" width="7" height="6" rx="1"/><rect x="8.5" y="15" width="7" height="6" rx="1"/><path d="M9 6h6M5.5 9v3h7v3m6-6v3h-6"/></svg>`
 
 // 代码块折叠状态
 const collapsedFences = new Set<number>()
+const codeViewFences = new Set<number>()
 
 // 图表渲染与全屏状态
 const messageRoot = ref<HTMLElement | null>(null)
@@ -167,11 +170,15 @@ markdown.renderer.rules.fence = (tokens, idx, options, env, renderer) => {
   const lang = tokens[idx]?.info.trim().split(/\s+/)[0] ?? ''
   const isMermaid = lang.toLowerCase() === 'mermaid'
   const collapsed = collapsedFences.has(index)
+  const codeView = isMermaid && codeViewFences.has(index)
   const toggleTip = collapsed ? '展开代码' : '收起代码'
   return [
-    `<div class="code-block${collapsed ? ' is-collapsed' : ''}" data-fence="${index}">`,
+    `<div class="code-block${collapsed ? ' is-collapsed' : ''}${codeView ? ' is-code-view' : ''}" data-fence="${index}">`,
     '<div class="code-head">',
     `<span class="code-lang">${markdown.utils.escapeHtml(lang || '代码')}</span>`,
+    isMermaid && !props.streaming
+      ? `<button type="button" class="code-view-switch" data-action="switch-view" aria-label="流程图渲染中" aria-pressed="${codeView}" data-tip="流程图渲染中" disabled>${iconCode}${iconDiagram}</button>`
+      : '',
     `<button type="button" class="code-toggle" data-action="toggle" aria-expanded="${!collapsed}" aria-label="${toggleTip}" data-tip="${toggleTip}">${iconUp}${iconDown}</button>`,
     isMermaid
       ? `<button type="button" class="code-export" data-action="export-png" aria-label="导出 PNG" data-tip="流程图渲染中" disabled>${iconExport}</button>`
@@ -251,6 +258,13 @@ async function renderMermaidBlock(block: HTMLElement, generation: number): Promi
     block.classList.add('has-mermaid')
     updateMermaidThumbnail(diagram)
     thumbnailObserver?.observe(diagram)
+    const viewButton = block.querySelector<HTMLButtonElement>('.code-view-switch')
+    if (viewButton) {
+      viewButton.disabled = false
+      const viewTip = block.classList.contains('is-code-view') ? '查看流程图' : '查看代码'
+      viewButton.setAttribute('aria-label', viewTip)
+      viewButton.dataset.tip = viewTip
+    }
     const exportButton = block.querySelector<HTMLButtonElement>('.code-export')
     if (exportButton) {
       exportButton.disabled = false
@@ -351,6 +365,21 @@ function onCodeClick(event: MouseEvent): void {
   if (button.dataset.action === 'run') {
     const code = block.querySelector('code')?.textContent ?? ''
     openDrawer?.(CodeRunView, '运行代码', { code })
+    return
+  }
+  if (button.dataset.action === 'switch-view') {
+    const codeView = block.classList.toggle('is-code-view')
+    const index = Number(block.dataset.fence)
+    if (codeView) codeViewFences.add(index)
+    else codeViewFences.delete(index)
+    const viewTip = codeView ? '查看流程图' : '查看代码'
+    button.setAttribute('aria-pressed', String(codeView))
+    button.setAttribute('aria-label', viewTip)
+    button.dataset.tip = viewTip
+    if (!codeView) {
+      const diagram = block.querySelector<HTMLElement>('.mermaid-diagram')
+      if (diagram) queueThumbnailUpdate(diagram)
+    }
     return
   }
   const index = Number(block.dataset.fence)
@@ -713,7 +742,8 @@ async function exportDiagramPng(block: HTMLElement, button: HTMLButtonElement): 
   border-radius: 0;
   background: transparent;
 }
-.message-chunk :deep(.code-block.is-collapsed pre) {
+.message-chunk :deep(.code-block.is-collapsed pre),
+.message-chunk :deep(.code-block.has-mermaid:not(.is-code-view) pre) {
   display: none;
 }
 .message-chunk :deep(.mermaid-diagram) {
@@ -731,11 +761,12 @@ async function exportDiagramPng(block: HTMLElement, button: HTMLButtonElement): 
   background-size: 14px 14px;
   cursor: zoom-in;
 }
-.message-chunk :deep(.code-block.has-mermaid pre),
-.message-chunk :deep(.code-block.is-collapsed .mermaid-diagram) {
+.message-chunk :deep(.code-block.is-collapsed .mermaid-diagram),
+.message-chunk :deep(.code-block.is-code-view .mermaid-diagram) {
   display: none;
 }
-.message-chunk :deep(.code-block.has-mermaid:not(.is-collapsed) .mermaid-diagram) {
+.message-chunk
+  :deep(.code-block.has-mermaid:not(.is-collapsed):not(.is-code-view) .mermaid-diagram) {
   display: flex;
 }
 .message-chunk :deep(.mermaid-diagram svg) {
@@ -987,6 +1018,7 @@ async function exportDiagramPng(block: HTMLElement, button: HTMLButtonElement): 
   font-weight: 600;
   line-height: 18px;
 }
+.message-chunk :deep(.code-view-switch),
 .message-chunk :deep(.code-toggle),
 .message-chunk :deep(.code-export),
 .message-chunk :deep(.code-copy),
@@ -1017,11 +1049,13 @@ async function exportDiagramPng(block: HTMLElement, button: HTMLButtonElement): 
 .message-chunk :deep(.code-export + .code-copy) {
   margin-left: 0;
 }
+.message-chunk :deep(.code-view-switch:disabled),
 .message-chunk :deep(.code-export:disabled) {
   cursor: not-allowed;
   opacity: 0.55;
 }
 @media (any-pointer: coarse) {
+  .message-chunk :deep(.code-view-switch),
   .message-chunk :deep(.code-toggle),
   .message-chunk :deep(.code-export),
   .message-chunk :deep(.code-copy),
@@ -1031,6 +1065,7 @@ async function exportDiagramPng(block: HTMLElement, button: HTMLButtonElement): 
   }
 }
 @media (hover: hover) {
+  .message-chunk :deep(.code-view-switch:not(:disabled):hover),
   .message-chunk :deep(.code-toggle:hover),
   .message-chunk :deep(.code-export:not(:disabled):hover),
   .message-chunk :deep(.code-copy:hover),
@@ -1039,6 +1074,7 @@ async function exportDiagramPng(block: HTMLElement, button: HTMLButtonElement): 
     color: #24292f;
   }
 }
+.message-chunk :deep(.code-view-switch:focus-visible),
 .message-chunk :deep(.code-toggle:focus-visible),
 .message-chunk :deep(.code-export:focus-visible),
 .message-chunk :deep(.code-copy:focus-visible),
@@ -1104,6 +1140,8 @@ async function exportDiagramPng(block: HTMLElement, button: HTMLButtonElement): 
 }
 .message-chunk :deep(.code-block.is-collapsed .icon-up),
 .message-chunk :deep(.code-block:not(.is-collapsed) .icon-down),
+.message-chunk :deep(.code-block.is-code-view .icon-code),
+.message-chunk :deep(.code-block:not(.is-code-view) .icon-diagram),
 .message-chunk :deep(.code-copy:not(.is-copied) .icon-check),
 .message-chunk :deep(.code-copy.is-copied .icon-copy) {
   display: none;
@@ -1112,6 +1150,7 @@ async function exportDiagramPng(block: HTMLElement, button: HTMLButtonElement): 
   .mermaid-tool-button,
   .mermaid-dialog-close,
   .message-chunk :deep(.mermaid-expand-hint),
+  .message-chunk :deep(.code-view-switch),
   .message-chunk :deep(.code-toggle),
   .message-chunk :deep(.code-export),
   .message-chunk :deep(.code-copy),
