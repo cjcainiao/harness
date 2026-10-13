@@ -12,12 +12,13 @@ from typing import Any
 from langchain.agents.middleware import AgentMiddleware
 from langgraph.errors import GraphBubbleUp
 
+from harness.agents.memory.checkpointer import get_checkpointer
 from harness.agents.lead_agent import Tool, create_lead_agent
 from harness.agents.thread_state import UploadedFileInfo
 from harness.config.app_config import get_app_config
 from harness.core.logger import get_logger
 from harness.models.factory import ReasoningEffort
-from harness.agents.memory.checkpointer import get_checkpointer
+from harness.mcp.cache import get_cached_mcp_discoveries
 from harness.runtime.events import parse_message_events
 from harness.storage import history
 from harness.storage.recorder import TurnRecorder
@@ -116,14 +117,18 @@ async def stream_agent(
     final_status = history.TURN_INTERRUPTED
 
     try:
+        app_config = get_app_config()
+        mcp_discoveries = await get_cached_mcp_discoveries(app_config.mcp)
         agent = create_lead_agent(
             model_name=model_name,
             thinking_enabled=thinking_enabled,
             reasoning_effort=reasoning_effort,
             tools=tools,
+            mcp_discoveries=mcp_discoveries,
             middleware=middleware,
             system_prompt=system_prompt,
             checkpointer=get_checkpointer(),
+            app_config=app_config,
         )
 
         # 本轮附件状态
@@ -133,7 +138,7 @@ async def stream_agent(
                 "uploaded_files": list(uploaded_files),
             },
             config=run_config,
-            durability=get_app_config().memory.durability,
+            durability=app_config.memory.durability,
             stream_mode=["messages", "custom"],
             subgraphs=False,
             version="v2",

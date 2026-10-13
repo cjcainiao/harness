@@ -11,15 +11,18 @@ from harness.agents.middlewares.skill_activation import SkillActivationMiddlewar
 from harness.agents.middlewares.thread_data import ThreadDataMiddleware
 from harness.agents.middlewares.tool_call import ToolCallMiddleware
 from harness.agents.middlewares.view_image import ViewImageMiddleware
-from harness.config.app_config import get_app_config
-from harness.tools.system.tool_search import catalog_hash, registry_entries
+from harness.config.app_config import AppConfig, get_app_config
+from harness.tools.system.tool_search import ToolCatalog
 
 
 # 组装代理中间件
 def build_agent_middleware(
     middleware: Sequence[AgentMiddleware] | None = None,
+    *,
+    catalog: ToolCatalog | None = None,
+    app_config: AppConfig | None = None,
 ) -> list[AgentMiddleware]:
-    config = get_app_config()
+    config = app_config or get_app_config()
 
     # 基础中间件
     items: list[AgentMiddleware] = [
@@ -30,17 +33,11 @@ def build_agent_middleware(
         ViewImageMiddleware(),
     ]
 
-    # 工具查找配置
-    search_enabled = any(
-        item.get("name") == "tool_search" and item.get("group") == "system" and item.get("enabled")
-        for item in config.tools
-    )
-    entries = registry_entries() if search_enabled else []
     # 懒加载工具过滤
-    if entries:
+    if catalog is not None and catalog.entries:
         items.append(
             DeferredToolFilterMiddleware(
-                frozenset(entry.name for entry in entries), catalog_hash(entries)
+                frozenset(entry.name for entry in catalog.entries), catalog.fingerprint
             )
         )
 

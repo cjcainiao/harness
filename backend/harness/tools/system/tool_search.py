@@ -38,8 +38,11 @@ class ToolEntry:
     tool: BaseTool
 
 
-# 工具目录
-_entries: list[ToolEntry] = []
+# 单次代理的工具目录
+@dataclass(frozen=True)
+class ToolCatalog:
+    entries: tuple[ToolEntry, ...]
+    fingerprint: str
 
 
 # 归一化工具组名称
@@ -48,7 +51,7 @@ def _normalize(text: str) -> str:
 
 
 # 工具目录构建
-def build_registry() -> list[BaseTool]:
+def build_registry() -> ToolCatalog:
     entries: list[ToolEntry] = []
     for item in enabled_items(False):
         try:
@@ -73,30 +76,34 @@ def build_registry() -> list[BaseTool]:
             )
         )
 
-    global _entries
-    _entries = entries
-    return [entry.tool for entry in entries]
-
-
-# 当前目录条目
-def registry_entries() -> list[ToolEntry]:
-    return list(_entries)
+    return make_catalog(entries)
 
 
 # 工具目录指纹
-def catalog_hash(entries: Sequence[ToolEntry] | None = None) -> str:
-    source = _entries if entries is None else entries
+def catalog_hash(entries: Sequence[ToolEntry]) -> str:
     definitions = [
-        {"name": entry.name, "schema": convert_to_openai_function(entry.tool)}
-        for entry in sorted(source, key=lambda item: item.name)
+        {
+            "name": entry.name,
+            "group": entry.group,
+            "aliases": entry.aliases,
+            "description": entry.description,
+            "schema": convert_to_openai_function(entry.tool),
+        }
+        for entry in sorted(entries, key=lambda item: item.name)
     ]
     serialized = json.dumps(definitions, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:16]
 
 
+# 固定工具目录快照
+def make_catalog(entries: Sequence[ToolEntry]) -> ToolCatalog:
+    snapshot = tuple(entries)
+    return ToolCatalog(entries=snapshot, fingerprint=catalog_hash(snapshot))
+
+
 # 懒加载工具名单
-def deferred_tools_section() -> str:
-    names = [entry.name for entry in _entries]
+def deferred_tools_section(catalog: ToolCatalog) -> str:
+    names = [entry.name for entry in catalog.entries]
     if not names:
         return ""
 
@@ -126,7 +133,7 @@ def _search(
     limit: int,
     group: str | None = None,
     *,
-    entries: Sequence[ToolEntry] | None = None,
+    entries: Sequence[ToolEntry],
 ) -> list[ToolEntry]:
     if limit <= 0:
         raise ValueError(f"返回条数上限必须为正数：{limit}")
@@ -137,7 +144,7 @@ def _search(
 
     entries = [
         entry
-        for entry in (_entries if entries is None else entries)
+        for entry in entries
         if not group or _normalize(entry.group) == _normalize(group)
     ]
 
@@ -188,45 +195,51 @@ class ToolSearchArgs(BaseModel):
     )
 
 
-# 懒加载工具查找
-@tool("tool_search", args_schema=ToolSearchArgs)
-def tool_search(
-    query: str,
-    tool_call_id: Annotated[str, InjectedToolCallId],
-    group: str | None = None,
-) -> Command:
-    """查找未绑定给模型的懒加载工具，取回其完整参数定义。
+# 按目录创建工具查找
+def make_tool_search(catalog: ToolCatalog) -> BaseTool:
+    @tool("tool_search", args_schema=ToolSearchArgs)
+    def scoped_tool_search(
+        query: str,
+        tool_call_id: Annotated[str, InjectedToolCallId],
+        group: str | None = None,
+    ) -> Command:
+        """查找未绑定给模型的懒加载工具，取回其完整参数定义。
 
-    已绑定的工具满足不了需求时使用。select: 可按准确工具名一次取回多个定义；
-    + 开头时先按名称关键词筛选，再用剩余内容排序；其他查询匹配名称、说明和别名。
-    普通查询支持不区分大小写的正则表达式，无效正则按普通文字匹配。
-    命中的定义带参数 JSON Schema，取到后本轮即可直接调用该工具，不必重复查找。
-    没有命中时返回空数组；配置中的上限无效时工具报错，错误原因随工具结果返回。
+        已绑定的工具满足不了需求时使用。select: 可按准确工具名一次取回多个定义；
+        + 开头时先按名称关键词筛选，再用剩余内容排序；其他查询匹配名称、说明和别名。
+        普通查询支持不区分大小写的正则表达式，无效正则按普通文字匹配。
+        命中的定义带参数 JSON Schema，取到后本轮即可直接调用该工具，不必重复查找。
+        没有命中时返回空数组；配置中的上限无效时工具报错，错误原因随工具结果返回。
 
-    Args:
-        query: 查询：select:工具名1,工具名2 精确选择；+名称关键词 说明关键词 限定名称并排序；其他内容按名称、说明和别名做不区分大小写的正则匹配。
-        group: 限定工具组，只在该组内检索；未提供时全目录检索。
+        Args:
+            query: 查询：select:工具名1,工具名2 精确选择；+名称关键词 说明关键词 限定名称并排序；其他内容按名称、说明和别名做不区分大小写的正则匹配。
+            group: 限定工具组，只在该组内检索；未提供时全目录检索。
 
-    Returns:
-        JSON 数组字符串，每个元素是一个命中工具的完整定义，含三个字段：
-        - name: 工具名，调用该工具时用的名字
-        - description: 工具说明与用法
-        - parameters: 参数的 JSON Schema，决定调用时允许哪些字段
-    """
-    # 返回上限配置
-    limit = get_tool_settings("tool_search").get("default_max_results")
-    if limit is None:
-        raise ValueError("tool_search 未配置返回上限：settings.default_max_results 缺失")
+        Returns:
+            JSON 数组字符串，每个元素是一个命中工具的完整定义，含三个字段：
+            - name: 工具名，调用该工具时用的名字
+            - description: 工具说明与用法
+            - parameters: 参数的 JSON Schema，决定调用时允许哪些字段
+        """
+        # 返回上限配置
+        limit = get_tool_settings("tool_search").get("default_max_results")
+        if limit is None:
+            raise ValueError("tool_search 未配置返回上限：settings.default_max_results 缺失")
 
-    snapshot = tuple(_entries)
-    entries = _search(query, int(limit), group, entries=snapshot)
-    content = json.dumps(
-        [convert_to_openai_function(entry.tool) for entry in entries], ensure_ascii=False
-    )
-    # 开放工具与检索结果
-    return Command(
-        update={
-            "promoted": {"catalog_hash": catalog_hash(snapshot), "names": [entry.name for entry in entries]},
-            "messages": [ToolMessage(content=content, name="tool_search", tool_call_id=tool_call_id)],
-        }
-    )
+        entries = _search(query, int(limit), group, entries=catalog.entries)
+        content = json.dumps(
+            [convert_to_openai_function(entry.tool) for entry in entries], ensure_ascii=False
+        )
+        # 开放工具与检索结果
+        return Command(
+            update={
+                "promoted": {"catalog_hash": catalog.fingerprint, "names": [entry.name for entry in entries]},
+                "messages": [ToolMessage(content=content, name="tool_search", tool_call_id=tool_call_id)],
+            }
+        )
+
+    return scoped_tool_search
+
+
+# 空目录工具模板
+tool_search = make_tool_search(make_catalog(()))

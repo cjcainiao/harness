@@ -2,9 +2,9 @@
 
 from fastapi import APIRouter, HTTPException, Query
 
+from app.schemas.chat.slash import SlashCommandItem
 from app.schemas.result import Result
-from app.schemas.slash import SlashCommandItem
-from app.services.slash_commands import list_slash_menu
+from app.services.chat.slash import list_slash_menu
 
 
 router = APIRouter(prefix="/slash", tags=["斜杠菜单"])

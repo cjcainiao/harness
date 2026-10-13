@@ -280,3 +280,26 @@ subagents:
       max_turns: 30 # 模型调用次数上限
       tools: [read_file, list_dir, word_count, current_time] # 本条可用工具名单
       disallowed_tools: [tool_search] # 本条禁用工具名单
+
+# MCP 配置
+mcp:                               # MCP 配置
+  servers:                         # MCP 服务器列表，以名称为键
+    aliyun-amap-maps:              # 阿里云百炼高德地图 MCP
+      description: 地图和路线工具         # 服务器用途说明
+      enabled: false               # 是否启用服务器
+      transport: streamable_http   # 连接方式：streamable_http 或 stdio
+      url: https://dashscope.aliyuncs.com/api/v1/mcps/amap-maps/mcp # streamable_http 服务器地址
+      headers:                     # streamable_http 请求头，密钥可引用环境变量
+        Authorization: Bearer ${DASHSCOPE_API_KEY} # 百炼 API Key，不含 Bearer 前缀
+      connect_timeout_seconds: 10  # 连接超时时间（秒）
+      call_timeout_seconds: 60     # 工具调用超时时间（秒）
+    example-stdio:                 # 本地服务器示例
+      description: 本地服务示例          # 服务器用途说明
+      enabled: false               # 是否启用服务器
+      transport: stdio             # 连接方式：streamable_http 或 stdio
+      command: uvx                 # 本地服务器启动命令
+      args: [example-mcp-server]   # 本地服务器启动参数
+      env: {}                      # 本地服务器环境变量
+      cwd: null                    # 本地服务器工作目录
+      connect_timeout_seconds: 10  # 连接超时时间（秒）
+      call_timeout_seconds: 60     # 工具调用超时时间（秒）

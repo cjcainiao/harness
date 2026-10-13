@@ -58,7 +58,7 @@ class StoredUpload:
 # 附件预览地址
 def upload_preview_url(thread_id: str, file_id: str) -> str:
     prefix = get_app_config().system.api_prefix.rstrip("/")
-    return f"{prefix}/uploads/{file_id}/preview?thread_id={quote(thread_id, safe='')}"
+    return f"{prefix}/chat/uploads/{file_id}/preview?thread_id={quote(thread_id, safe='')}"
 
 
 # 文件名校验

@@ -4,7 +4,14 @@
     <!-- 左侧设置导航 -->
     <ConfigNav />
     <!-- 右侧内容区 -->
-    <main class="config-main">
+    <main
+      class="config-main"
+      :class="{
+        'management-main': ['config-mcp', 'config-model', 'config-skills'].includes(
+          String($route.name),
+        ),
+      }"
+    >
       <router-view />
     </main>
   </div>
@@ -33,9 +40,24 @@ import ConfigNav from './components/ConfigNav.vue'
   border-left: 1px solid #e8eaed;
   background: #fff;
 }
+.config-main.management-main {
+  scrollbar-width: none;
+}
+.config-main.management-main::-webkit-scrollbar {
+  display: none;
+}
 @media (prefers-reduced-motion: reduce) {
   .config-main {
     scroll-behavior: auto;
+  }
+}
+@media (max-width: 720px) {
+  .config-layout {
+    flex-direction: column;
+  }
+  .config-main {
+    border-top: 1px solid #e8eaed;
+    border-left: 0;
   }
 }
 </style>

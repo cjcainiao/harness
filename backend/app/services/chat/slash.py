@@ -3,7 +3,9 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 
-from app.schemas.slash import SlashCommandItem
+from app.schemas.chat.slash import SlashCommandItem
+from harness.config.app_config import get_app_config
+from harness.mcp.cache import get_mcp_status
 from harness.skills.loader import load_skills
 from harness.storage.db import open_history_db
 
@@ -53,8 +55,28 @@ async def list_skill_options(query: str | None = None) -> list[SlashCommandItem]
 
 
 # 获取 MCP 菜单项
-async def list_mcp_options(_query: str | None = None) -> list[SlashCommandItem]:
-    return []
+async def list_mcp_options(query: str | None = None) -> list[SlashCommandItem]:
+    keyword = query.strip().casefold() if query else ""
+    config = get_app_config().mcp
+    snapshot = get_mcp_status(config)
+    state_labels = {
+        "unchecked": "未检查",
+        "connected": "已连接",
+        "failed": "连接失败",
+        "disabled": "已停用",
+    }
+    return [
+        SlashCommandItem(
+            name=status.name,
+            label=status.name,
+            description=f"{state_labels[status.state]} · {len(status.tool_names)} 个工具",
+            icon_key="paperclip",
+        )
+        for status in snapshot.servers
+        if not keyword
+        or keyword in status.name.casefold()
+        or any(keyword in name.casefold() for name in status.tool_names)
+    ]
 
 
 type SlashMenuHandler = Callable[[str | None], Awaitable[list[SlashCommandItem]]]

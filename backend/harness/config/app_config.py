@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any, Self
 
@@ -10,6 +11,7 @@ from ruamel.yaml import YAML
 from pydantic import Field
 
 from harness.config.memory_config import memoryConfig
+from harness.config.mcp_config import MCPConfig
 from harness.config.model_config import ModelConfig
 from harness.config.skills_config import skillsConfig
 from harness.config.subagents_config import subagentsConfig
@@ -21,12 +23,16 @@ logger = logging.getLogger(__name__)
 # 加载 yaml
 _yaml_safe = YAML(typ="safe")
 
+# MCP 配置中的嵌入式环境变量
+_MCP_ENV_REFERENCE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
 
 # 全局配置类
 class AppConfig(ToolConfig):
     system: systemConfig = Field(default_factory=systemConfig, description="系统配置")
     memory: memoryConfig = Field(default_factory=memoryConfig, description="记忆配置")
     models: list[ModelConfig] = Field(default_factory=list, description="模型配置")
+    mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP 配置")
     skills: skillsConfig = Field(default_factory=skillsConfig, description="技能配置")
     subagents: subagentsConfig = Field(default_factory=subagentsConfig, description="子代理配置")
 
@@ -64,9 +70,55 @@ class AppConfig(ToolConfig):
         cls._check_config_version(config_data, resolved_path)
         # 读入 .env
         load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+        mcp_data = config_data.pop("mcp", None)
         config_data = cls.resolve_env_variables(config_data)
+        if mcp_data is not None:
+            config_data["mcp"] = cls.resolve_mcp_env_variables(mcp_data)
 
         return cls.model_validate(config_data)
+
+    # 只解析已启用服务器的环境变量
+    @classmethod
+    def resolve_mcp_env_variables(cls, config: Any) -> Any:
+        if not isinstance(config, dict):
+            return config
+        servers = config.get("servers")
+        if not isinstance(servers, dict):
+            return config
+        resolved = dict(config)
+        resolved["servers"] = {
+            name: cls._resolve_mcp_env_value(server)
+            if isinstance(server, dict) and server.get("enabled") is True
+            else server
+            for name, server in servers.items()
+        }
+        return resolved
+
+    # 解析已启用服务器的 $VAR 和字符串内 ${VAR}
+    @classmethod
+    def _resolve_mcp_env_value(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            if value.startswith("$") and not value.startswith("${"):
+                resolved = cls.resolve_env_variables(value)
+                if resolved == "":
+                    raise ValueError(f"MCP 配置引用的环境变量 {value[1:]} 为空")
+                return resolved
+
+            def replace(match: re.Match[str]) -> str:
+                variable = match.group(1)
+                resolved = os.getenv(variable)
+                if resolved is None:
+                    raise ValueError(f"MCP 配置引用的环境变量 {variable} 不存在")
+                if resolved == "":
+                    raise ValueError(f"MCP 配置引用的环境变量 {variable} 为空")
+                return resolved
+
+            return _MCP_ENV_REFERENCE.sub(replace, value)
+        if isinstance(value, dict):
+            return {key: cls._resolve_mcp_env_value(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [cls._resolve_mcp_env_value(item) for item in value]
+        return value
 
     # 校验配置版本，低于 config.example.yaml 时告警
     @classmethod

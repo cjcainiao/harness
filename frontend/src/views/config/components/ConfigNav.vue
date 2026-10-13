@@ -12,7 +12,7 @@
       />
     </div>
     <nav class="nav-groups" aria-label="设置分类">
-      <section v-for="group in navGroups" :key="group.label" class="nav-group">
+      <section v-for="group in filteredGroups" :key="group.label" class="nav-group">
         <h4 class="group-label">{{ group.label }}</h4>
         <button
           v-for="item in group.items"
@@ -32,10 +32,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Cpu, Search, User } from 'lucide-vue-next'
+import { BookOpenCheck, BrainCircuit, PlugZap, Search, User } from 'lucide-vue-next'
 
 interface NavItem {
   id: string
@@ -55,7 +55,9 @@ const navGroups: NavGroup[] = [
     label: '个人',
     items: [
       { id: 'profile', label: '个人资料', icon: User, routeName: 'config-index' },
-      { id: 'model', label: '模型', icon: Cpu, routeName: 'config-model' },
+      { id: 'model', label: '模型', icon: BrainCircuit, routeName: 'config-model' },
+      { id: 'mcp', label: 'MCP 服务', icon: PlugZap, routeName: 'config-mcp' },
+      { id: 'skills', label: 'Skill 技能包', icon: BookOpenCheck, routeName: 'config-skills' },
     ],
   },
 ]
@@ -63,8 +65,18 @@ const navGroups: NavGroup[] = [
 const route = useRoute()
 const router = useRouter()
 const keyword = ref('')
+const filteredGroups = computed(() =>
+  navGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) =>
+        item.label.toLowerCase().includes(keyword.value.trim().toLowerCase()),
+      ),
+    }))
+    .filter((group) => group.items.length > 0),
+)
 
-// 点击导航项切到对应子路由
+// 设置页导航
 function openSection(routeName: string): void {
   void router.push({ name: routeName })
 }
@@ -82,6 +94,7 @@ function openSection(routeName: string): void {
   -webkit-overflow-scrolling: touch;
   scrollbar-color: #dfe2e6 transparent;
   scrollbar-width: thin;
+  background: #f8f8f8;
 }
 .config-nav::-webkit-scrollbar {
   width: 6px;
@@ -97,34 +110,34 @@ function openSection(routeName: string): void {
   gap: 8px;
   height: 34px;
   padding: 0 10px;
-  border: 1px solid #e3e6ea;
-  border-radius: 8px;
+  border: 1px solid #dedede;
+  border-radius: 5px;
   background: #fff;
 }
 .nav-search-icon {
   flex: 0 0 auto;
-  color: #9aa0a6;
+  color: #888;
 }
 .nav-search-input {
   flex: 1;
   min-width: 0;
   border: 0;
   background: none;
-  color: #24292f;
+  color: #222;
   font-size: 13px;
 }
 .nav-search-input:focus {
   outline: none;
 }
 .nav-search-input::placeholder {
-  color: #a3a8af;
+  color: #999;
 }
 .nav-groups {
   padding-bottom: 12px;
 }
 .group-label {
   padding: 14px 8px 6px;
-  color: #9ca3af;
+  color: #888;
   font-size: 12px;
   font-weight: 500;
 }
@@ -136,9 +149,9 @@ function openSection(routeName: string): void {
   height: 32px;
   padding: 0 8px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 5px;
   background: transparent;
-  color: #3f454c;
+  color: #444;
   text-align: left;
   cursor: pointer;
 }
@@ -151,21 +164,21 @@ function openSection(routeName: string): void {
 }
 .nav-item-icon {
   flex: 0 0 auto;
-  color: #6b7280;
+  color: #666;
 }
 .nav-item.is-active {
-  background: #eceef1;
-  color: #1f2328;
+  background: #eaeaea;
+  color: #171717;
 }
 .nav-item.is-active .nav-item-label {
   font-weight: 500;
 }
 .nav-item.is-active .nav-item-icon {
-  color: #3f454c;
+  color: #333;
 }
 @media (hover: hover) {
   .nav-item:hover {
-    background: #eceef1;
+    background: #eaeaea;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -176,6 +189,28 @@ function openSection(routeName: string): void {
 @media (any-pointer: coarse) {
   .nav-item {
     height: 38px;
+  }
+}
+@media (max-width: 720px) {
+  .config-nav {
+    width: 100%;
+    padding: 8px 12px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .nav-search,
+  .group-label {
+    display: none;
+  }
+  .nav-groups,
+  .nav-group {
+    display: flex;
+    gap: 6px;
+  }
+  .nav-item {
+    flex: 0 0 auto;
+    width: auto;
+    padding: 0 12px;
   }
 }
 </style>

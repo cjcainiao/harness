@@ -7,11 +7,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, Form, Path, Query, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, ConfigDict, Field
 
 from app.exceptions import AppException
+from app.schemas.chat.uploads import UploadInfo
 from app.schemas.result import Result
-from app.services.upload_store import (
+from app.services.chat.uploads import (
     INLINE_IMAGE_TYPES,
     UploadStoreError,
     delete_upload,
@@ -22,19 +22,6 @@ from app.services.upload_store import (
 
 
 router = APIRouter(prefix="/uploads", tags=["文件上传"])
-
-
-# 上传附件信息
-class UploadInfo(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    file_id: str = Field(description="服务端生成的附件标识")
-    thread_id: str = Field(description="所属会话标识")
-    name: str = Field(description="原始文件名")
-    size: int = Field(description="文件字节数")
-    mime_type: str = Field(description="文件媒体类型")
-    created_at: str = Field(description="上传时间，ISO-8601 UTC")
-    preview_url: str = Field(description="附件预览或下载地址")
 
 
 # 上传错误转换

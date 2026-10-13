@@ -15,7 +15,7 @@ export async function fetchSlashMenu(
   query: string,
   signal?: AbortSignal,
 ): Promise<SlashCommandItem[]> {
-  const result = await requestUtil.get<ApiResult<SlashCommandItem[]>>('/api/slash', {
+  const result = await requestUtil.get<ApiResult<SlashCommandItem[]>>('/api/chat/slash', {
     params:
       command || query ? { command: command ?? undefined, query: query || undefined } : undefined,
     signal,

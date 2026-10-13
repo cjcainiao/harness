@@ -31,7 +31,7 @@ export async function uploadFile(threadId: string, file: File): Promise<Uploaded
   form.append('thread_id', threadId)
   form.append('file', file)
   const result = await requestUtil.post<ApiResult<UploadedFileInfo>, FormData>(
-    '/api/uploads',
+    '/api/chat/uploads',
     form,
     { timeout: 120_000 },
   )
@@ -44,7 +44,7 @@ export async function uploadFile(threadId: string, file: File): Promise<Uploaded
 /** 删除未发送的会话附件 */
 export async function deleteUpload(threadId: string, fileId: string): Promise<void> {
   const result = await requestUtil.delete<ApiResult<null>>(
-    `/api/uploads/${encodeURIComponent(fileId)}`,
+    `/api/chat/uploads/${encodeURIComponent(fileId)}`,
     { params: { thread_id: threadId } },
   )
   if (result.code !== 200) throw new Error(result.message || '删除文件失败')
@@ -53,5 +53,6 @@ export async function deleteUpload(threadId: string, fileId: string): Promise<vo
 /** 将后端相对地址转换为可供图片标签使用的地址 */
 export function uploadPreviewUrl(path: string): string {
   const base = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? ''
-  return `${base}${path}`
+  const currentPath = path.replace(/^\/api\/uploads\//, '/api/chat/uploads/')
+  return `${base}${currentPath}`
 }

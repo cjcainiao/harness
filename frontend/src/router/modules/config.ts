@@ -17,6 +17,16 @@ const configRoutes: RouteRecordRaw[] = [
         name: 'config-model',
         component: () => import('@/views/config/pages/ModelView.vue'),
       },
+      {
+        path: 'mcp',
+        name: 'config-mcp',
+        component: () => import('@/views/config/pages/McpView.vue'),
+      },
+      {
+        path: 'skills',
+        name: 'config-skills',
+        component: () => import('@/views/config/pages/SkillsView.vue'),
+      },
     ],
   },
 ]

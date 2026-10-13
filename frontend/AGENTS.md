@@ -60,12 +60,17 @@
 - 附件条 `v-for` 的 `:key` 就是 `fileKey`，要放开重复必须同时换成每项自增 uid，否则 Vue 撞 key、移除会删错条
 - 隐藏的 `<input type="file">` 每次选完要 `input.value = ''`，否则同一个文件再选不触发 `change`
 
-## 触屏适配
+## 手机端与触屏适配
+- 手机端可聚焦的文字输入控件（包括搜索框、`input`、`textarea`、`select` 和组件库内部的实际输入框）字号至少 `16px`，避免 iOS 聚焦时自动放大页面；只改占位文字或外层容器的字号无效
+- 不用 `maximum-scale=1` 或 `user-scalable=no` 阻止缩放，保留用户手动放大的能力
+- 窄屏布局允许内容收缩或换行：弹性与网格子项按需设 `min-width: 0`，长文本截断或换行，不用页面级 `overflow-x: hidden` 掩盖横向溢出
+- 弹窗和抽屉在手机端限制为可视区域高度，内容区可滚动，输入法弹出后仍能到达当前输入框和底部操作；贴底控件考虑安全区
 - `:hover` 样式一律包在 `@media (hover: hover)` 里，否则手机点完会残留悬停态
-- 命中区只在 `@media (any-pointer: coarse)` 里放大（图标按钮 40×40、行内触发器 `min-height: 36px`），鼠标侧尺寸不动
+- 命中区只在 `@media (any-pointer: coarse)` 里放大（图标按钮至少 40×40、输入与选择控件至少 44px 高、行内触发器 `min-height: 36px`），鼠标侧尺寸不动
 - 小控件加 `touch-action: manipulation` 去掉 300ms 双击缩放延迟，加 `-webkit-tap-highlight-color: transparent` 去掉点击灰块
 - 悬停气泡在触屏上按 `window.matchMedia('(hover: hover)')` 关掉：`ElTooltip` 传 `:disabled="!canHover"`
 - 触屏分支用 `event.pointerType !== 'mouse'` 判断，不用 `ontouchstart` 探测
+- 改动交互控件后检查常见手机宽度（320、375、430px）：页面无横向滚动，点击输入框不触发页面自动放大，弹出输入法后仍可完成操作
 
 ## 浏览器 API 兜底
 - 唯一标识只走 `utils/uuidUtil` 的 `createUuid()`，不许直接 `crypto.randomUUID()`：HTTP 部署下它是 undefined，写在 setup 里就是整页白屏

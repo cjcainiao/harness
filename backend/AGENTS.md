@@ -9,9 +9,17 @@
 - `app/` 是 Web 外壳，`harness/` 是独立框架库
 - 依赖只允许 `app -> harness` 单向，`harness/` 内禁止 import `app/` 和 FastAPI 的东西
 - `harness/` 各包的 `__init__.py` 默认只写一行包说明；只聚合同名类的包（如 `middlewares`）可以导出，但不得 re-export 会拉起整条依赖链的模块（`runtime/__init__.py` 导 `stream` 就绕回 `storage.db` 成了环）
-- 新接口放 `app/gateway/`，在 `app/gateway/__init__.py` 导出，在 `app/main.py` 注册
 - 路由统一挂在 `system.api_prefix`（默认 /api）下，`/health` 除外
-- 响应统一用 `app.schemas.result.Result` 包装
+- 普通 JSON 响应用 `app.schemas.result.Result` 包装；流式对话和文件预览使用对应的响应类型
+
+## 网关层
+- `app/gateway/` 按业务模块建目录，不在根目录新增单个业务接口文件；目前有 `chat/` 和 `config/`
+- `chat/` 放对话流、历史、斜杠菜单、上传接口；`config/` 放模型与 MCP 配置接口。相关业务代码和请求/响应结构分别放在 `app/services/<模块>/`、`app/schemas/<模块>/`
+- 每个模块的 `__init__.py` 定义一个带模块前缀的 `router`，并通过 `include_router` 汇总本模块的子路由；`chat` 用 `/chat`，`config` 用 `/config`
+- 子路由只写模块前缀之后的路径，不重复写 `/chat` 或 `/config`；例如对话流是 `/stream`，MCP 子路由前缀是 `/mcp`
+- `app/gateway/__init__.py` 只导出模块路由，`app/main.py` 只注册一次模块路由并加上 `system.api_prefix`；不要再单独注册模块内的子路由
+- 网关只处理 HTTP 参数、响应和错误转换；业务逻辑放 `app/services/`，Pydantic 请求/响应结构放 `app/schemas/`
+- 修改接口路径时同步更新前端调用、服务端生成的地址和相关测试；已保存的地址要考虑兼容
 
 ## 配置系统
 - `config.yaml` 是主配置文件，程序可读写，YAML 读写统一用 ruamel（round-trip 保留注释）
@@ -26,7 +34,7 @@
 - 库文件的相对路径统一由 `harness/runtime/db_path.py:resolve_db_path` 按后端项目根展开，不受启动目录影响
 - 数据库启动入口在 `app/init_db.py`，集中初始化应用表 `chat_thread`、`chat_turn`、`slash_command` 和检查点表 `checkpoints`、`writes`
 - 历史表 DDL 唯一事实源在 `harness/storage/schema.py`，语句全部幂等，启动时执行一遍 `SCHEMA_SCRIPT`
-- 斜杠命令表 DDL 与初始数据由 `app/schemas/slash.py:init_slash_commands` 初始化，`app/init_db.py` 在启动时调用
+- 斜杠命令表 DDL 与初始数据由 `app/schemas/chat/slash.py:init_slash_commands` 初始化，`app/init_db.py` 在启动时调用
 - 不记版本号、不做迁移链（不用 `user_version`）；给已存在的表改列要自己补 DDL 或删库重建
 - 建表失败直接抛出让启动失败，不静默降级成"没有历史功能"
 - 写历史走同步短事务（`connect_history_db`），写失败只 `logger.warning` 不打断回复

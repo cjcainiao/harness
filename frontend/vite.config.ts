@@ -5,18 +5,16 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
 export default defineConfig({
-  plugins: [
-    vue(),
-    vueDevTools(),
-  ],
+  plugins: [vue(), vueDevTools()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
   server: {
+    host: '0.0.0.0',
     proxy: {
-      // /api 原样转发到后端，后端路由自带这一层前缀
+      // 后端接口代理
       '/api': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
