@@ -252,6 +252,7 @@ function startNewConversation(): void {
   width: 260px;
   flex-shrink: 0;
   border-right: 1px solid #e4e7ed;
+  background: #fafafa;
 }
 .sidebar-top {
   flex-shrink: 0;

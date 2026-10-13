@@ -376,7 +376,7 @@ const stateText = computed(() => {
   background: #dedede;
 }
 .card-actions .delete-button {
-  color: #626262;
+  color: #c62828;
 }
 .tools-panel {
   border-top: 1px solid #e5e5e5;

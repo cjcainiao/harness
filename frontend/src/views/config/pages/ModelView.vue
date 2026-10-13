@@ -114,6 +114,7 @@ import { BrainCircuit, Plus, Search } from 'lucide-vue-next'
 import {
   createModelConfig,
   deleteModelConfig,
+  isPersistedModelConfig,
   listModelConfigs,
   setDefaultModel,
   updateModelConfig,
@@ -159,7 +160,7 @@ function messageOf(error: unknown, fallback: string): string {
 }
 
 function notify(type: 'success' | 'error', message: string): void {
-  ElMessage({ type, message, plain: true, customClass: 'model-toast' })
+  ElMessage({ type, message, plain: true })
 }
 
 // 模型列表加载
@@ -200,11 +201,14 @@ async function saveModel(input: ModelConfigInput): Promise<void> {
   busyAction.value = 'save'
   try {
     if (editingModel.value) {
-      await updateModelConfig(editingModel.value.model_name, input)
+      const updated = await updateModelConfig(editingModel.value.model_name, input)
+      models.value = models.value.map((model) =>
+        model.model_name === editingModel.value?.model_name ? updated : model,
+      )
     } else {
-      await createModelConfig(input)
+      const created = await createModelConfig(input)
+      models.value = [...models.value, created]
     }
-    models.value = await listModelConfigs()
     formOpen.value = false
     notify('success', '模型配置已更新（仅预览）')
   } catch (error: unknown) {
@@ -231,11 +235,14 @@ async function makeDefault(model: ModelConfigItem): Promise<void> {
 // 模型删除
 async function removeModel(model: ModelConfigItem): Promise<void> {
   if (busy.value) return
+  const persisted = isPersistedModelConfig(model.model_name)
   try {
     await ElMessageBox.confirm(
-      models.value[0]?.model_name === model.model_name
-        ? '删除默认模型后，列表中的下一项将成为默认模型。'
-        : '删除后，这个模型将从当前预览列表中移除。',
+      persisted
+        ? models.value[0]?.model_name === model.model_name
+          ? '删除默认模型后，配置列表中的下一项将成为默认模型。'
+          : '删除后，这个模型将从后端配置中移除。'
+        : '这个模型尚未保存，仅从当前预览列表中移除。',
       `删除 ${model.display_name}？`,
       {
         confirmButtonText: '删除模型',
@@ -248,9 +255,9 @@ async function removeModel(model: ModelConfigItem): Promise<void> {
   }
   busyAction.value = model.model_name
   try {
-    await deleteModelConfig(model.model_name)
-    models.value = await listModelConfigs()
-    notify('success', '模型已删除（仅预览）')
+    const deletedFromBackend = await deleteModelConfig(model.model_name)
+    models.value = models.value.filter((item) => item.model_name !== model.model_name)
+    notify('success', deletedFromBackend ? '模型已删除' : '模型已从预览中移除')
   } catch (error: unknown) {
     notify('error', messageOf(error, '删除模型失败'))
   } finally {
@@ -513,20 +520,6 @@ onMounted(() => void loadModels())
   --el-button-border-color: #171717;
   --el-button-hover-bg-color: #333;
   --el-button-hover-border-color: #333;
-}
-:global(.el-message.model-toast) {
-  --el-message-bg-color: #fff;
-  --el-message-border-color: #d8d8d8;
-  --el-message-text-color: #222;
-  background: #fff;
-  border-color: #d8d8d8;
-  color: #222;
-}
-:global(.el-message.model-toast .el-message__icon) {
-  color: #555;
-}
-:global(.el-message.model-toast.el-message--error .el-message__icon) {
-  color: #a36558;
 }
 @media (hover: hover) {
   .provider-filter :deep(.el-select__wrapper:not(.is-focused):hover) {

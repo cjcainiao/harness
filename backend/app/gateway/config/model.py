@@ -2,9 +2,9 @@
 
 import asyncio
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
-from app.schemas.config.model import ModelInfo
+from app.schemas.config.model import ModelConfigItem
 from app.schemas.result import Result
 from app.services.config.model import (
     ModelConfigManagementError,
@@ -19,9 +19,9 @@ from harness.config.model_config import ModelConfig
 router = APIRouter(prefix="/models", tags=["模型配置"])
 
 
-# 获取模型列表
-@router.get("", summary="获取模型列表")
-async def get_models() -> Result[list[ModelInfo]]:
+# 获取模型配置列表
+@router.get("", summary="获取模型配置列表")
+async def get_models() -> Result[list[ModelConfigItem]]:
     models = await asyncio.to_thread(list_model_configs)
     return Result.success(models)
 
@@ -48,7 +48,9 @@ async def create_model(model: ModelConfig) -> Result[None]:
 
 # 删除模型配置
 @router.delete("", summary="删除模型配置")
-async def delete_model(model_name: str) -> Result[None]:
+async def delete_model(
+    model_name: str = Query(min_length=1, description="实际模型名称"),
+) -> Result[None]:
     try:
         await asyncio.to_thread(delete_model_config, model_name)
     except ModelConfigManagementError as error:

@@ -141,7 +141,7 @@ function messageOf(error: unknown, fallback: string): string {
 }
 
 function notify(type: 'success' | 'error', message: string): void {
-  ElMessage({ type, message, plain: true, customClass: 'mcp-toast' })
+  ElMessage({ type, message, plain: true })
 }
 
 // MCP 配置与状态加载
@@ -461,20 +461,6 @@ onMounted(() => void loadAll())
   --el-button-hover-border-color: #333;
   --el-button-active-bg-color: #000;
   --el-button-active-border-color: #000;
-}
-:global(.el-message.mcp-toast) {
-  --el-message-bg-color: #fff;
-  --el-message-border-color: #d8d8d8;
-  --el-message-text-color: #222;
-  background: #fff;
-  border-color: #d8d8d8;
-  color: #222;
-}
-:global(.el-message.mcp-toast .el-message__icon) {
-  color: #555;
-}
-:global(.el-message.mcp-toast.el-message--error .el-message__icon) {
-  color: #a36759;
 }
 @media (hover: hover) {
   .add-button:hover {

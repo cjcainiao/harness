@@ -84,8 +84,11 @@
                   v-model.trim="form.baseUrl"
                   :disabled="saving"
                   type="url"
-                  placeholder="https://api.example.com/v1"
+                  :placeholder="
+                    model?.base_url_configured ? '已配置，留空保持' : 'https://api.example.com/v1'
+                  "
                 />
+                <small v-if="model?.base_url_configured">原地址不会回显，留空保持已有配置。</small>
               </label>
               <label class="field">
                 <span>密钥环境变量</span>
@@ -257,7 +260,7 @@ watch(
     form.description = model?.description ?? ''
     form.provider = model?.provider ?? ''
     form.implementation = model?.use ?? ''
-    form.baseUrl = model?.base_url ?? ''
+    form.baseUrl = ''
     form.apiKey = ''
     form.timeout = String(model?.timeout ?? 60)
     form.maxRetries = String(model?.max_retries ?? 2)

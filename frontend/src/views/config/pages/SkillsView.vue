@@ -144,7 +144,7 @@ function messageOf(error: unknown, fallback: string): string {
 }
 
 function notify(type: 'success' | 'error', message: string): void {
-  ElMessage({ type, message, plain: true, customClass: 'skill-toast' })
+  ElMessage({ type, message, plain: true })
 }
 
 // 技能预览列表加载
@@ -473,20 +473,6 @@ onMounted(() => void loadSkills())
   --el-button-border-color: #171717;
   --el-button-hover-bg-color: #333;
   --el-button-hover-border-color: #333;
-}
-:global(.el-message.skill-toast) {
-  --el-message-bg-color: #fff;
-  --el-message-border-color: #d8d8d8;
-  --el-message-text-color: #222;
-  background: #fff;
-  border-color: #d8d8d8;
-  color: #222;
-}
-:global(.el-message.skill-toast .el-message__icon) {
-  color: #555;
-}
-:global(.el-message.skill-toast.el-message--error .el-message__icon) {
-  color: #a36558;
 }
 @media (hover: hover) {
   .source-filter :deep(.el-select__wrapper:not(.is-focused):hover) {

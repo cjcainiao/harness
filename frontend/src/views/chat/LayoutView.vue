@@ -112,7 +112,7 @@ function onSidebarClick(event: MouseEvent) {
     z-index: 31;
     inset: 0 auto 0 0;
     width: min(280px, calc(100vw - 56px));
-    background: #f8faff;
+    background: #fafafa;
     box-shadow: 8px 0 24px rgba(20, 24, 29, 0.12);
     transform: translateX(-105%);
     transition: transform 0.2s ease;

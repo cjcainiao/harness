@@ -35,9 +35,7 @@
         </div>
         <div>
           <span>连接地址</span>
-          <strong class="endpoint" :title="model.base_url || undefined">{{
-            model.base_url || '未设置'
-          }}</strong>
+          <strong class="endpoint">{{ model.base_url_configured ? '已配置' : '未设置' }}</strong>
         </div>
       </div>
     </div>
@@ -245,7 +243,7 @@ function formatTokens(value: number | null): string {
   -webkit-tap-highlight-color: transparent;
 }
 .card-actions .delete-button {
-  color: #626262;
+  color: #c62828;
 }
 .card-actions button:disabled {
   cursor: wait;

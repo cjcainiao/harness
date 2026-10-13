@@ -24,7 +24,9 @@
         <button type="button" :disabled="busy" @click="$emit('toggle')">
           {{ skill.enabled ? '停用' : '启用' }}
         </button>
-        <button type="button" :disabled="busy" @click="$emit('remove')">删除</button>
+        <button class="delete-button" type="button" :disabled="busy" @click="$emit('remove')">
+          删除
+        </button>
       </div>
       <span v-else class="builtin-note">随项目提供</span>
     </footer>
@@ -157,6 +159,9 @@ defineEmits<{ toggle: []; remove: [] }>()
   cursor: pointer;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+}
+.actions .delete-button {
+  color: #c62828;
 }
 .actions button:disabled {
   cursor: wait;

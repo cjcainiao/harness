@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import re
 import threading
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
 from pydantic import ValidationError
+from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 
 from app.schemas.config.mcp import MCPServerConfigInfo, MCPServerInfo, MCPStatusInfo
@@ -16,7 +17,12 @@ from harness.config.app_config import AppConfig, get_app_config, reload_app_conf
 from harness.config.mcp_config import MCPConfig
 from harness.mcp.cache import MCPStatusSnapshot, reset_mcp_cache
 from harness.mcp.tools import mcp_tool_name
-from harness.utils.yaml_util import dump_yaml, load_yaml_keep_comment
+from harness.utils.yaml_util import (
+    edit_yaml_text,
+    load_yaml_keep_comment,
+    render_yaml_fragment,
+    yaml_block_end,
+)
 
 
 _write_lock = threading.Lock()
@@ -51,6 +57,11 @@ class MCPConfigManagementError(ValueError):
 # 读取配置中的服务器映射
 def _read_servers() -> tuple[CommentedMap, CommentedMap]:
     data = load_yaml_keep_comment(AppConfig.resolve_config_path())
+    return data, _get_servers(data)
+
+
+# 取得服务器映射
+def _get_servers(data: CommentedMap) -> CommentedMap:
     mcp = data.get("mcp")
     if mcp is None:
         mcp = CommentedMap()
@@ -63,7 +74,7 @@ def _read_servers() -> tuple[CommentedMap, CommentedMap]:
         mcp["servers"] = servers
     if not isinstance(servers, dict):
         raise MCPConfigManagementError(422, "MCP 服务器列表格式无效")
-    return data, servers
+    return servers
 
 
 # 校验敏感字段使用环境变量引用
@@ -126,8 +137,8 @@ def _server_info(name: str, server: Mapping[str, Any]) -> MCPServerConfigInfo:
     )
 
 
-# 验证后写回原始配置并更新运行时缓存
-def _save(data: CommentedMap) -> None:
+# 校验配置内容
+def _validate_config(data: CommentedMap) -> None:
     try:
         candidate = dict(data)
         mcp = candidate.pop("mcp")
@@ -136,7 +147,34 @@ def _save(data: CommentedMap) -> None:
         AppConfig.model_validate(candidate)
     except (ValidationError, ValueError, TypeError) as error:
         raise MCPConfigManagementError(422, "MCP 配置无效或引用的环境变量不可用") from error
-    dump_yaml(AppConfig.resolve_config_path(), data)
+
+
+# 序列化单个服务器配置块
+def _render_server(name: str, server: CommentedMap, newline: str) -> str:
+    wrapper = CommentedMap({"mcp": CommentedMap({"servers": CommentedMap({name: server})})})
+    fragment = render_yaml_fragment(wrapper, newline)
+    return "".join(fragment.splitlines(keepends=True)[2:])
+
+
+# 局部修改配置并刷新缓存
+def _edit_config(
+    edit: Callable[[str, CommentedMap, CommentedMap, bool, bool], str],
+) -> None:
+    def apply(source: str) -> str:
+        yaml = YAML()
+        data = yaml.load(source)
+        if not isinstance(data, CommentedMap):
+            raise MCPConfigManagementError(422, "配置文件格式无效")
+        had_mcp = "mcp" in data
+        had_servers = had_mcp and isinstance(data["mcp"], dict) and "servers" in data["mcp"]
+        servers = _get_servers(data)
+        updated = edit(source, data, servers, had_mcp, had_servers)
+        _validate_config(data)
+        if yaml.load(updated) != data:
+            raise RuntimeError("修改 MCP 后的配置校验失败")
+        return updated
+
+    edit_yaml_text(AppConfig.resolve_config_path(), apply)
     reload_app_config()
     reset_mcp_cache()
 
@@ -150,15 +188,67 @@ def list_mcp_server_configs() -> list[MCPServerConfigInfo]:
 # 新增服务器
 def create_mcp_server(name: str, values: dict[str, Any]) -> MCPServerConfigInfo:
     with _write_lock:
-        data, servers = _read_servers()
-        if name in servers:
-            raise MCPConfigManagementError(409, f"MCP 服务器已存在：{name}")
-        _check_secret_values(values.get("headers"))
-        _check_secret_values(values.get("env"))
-        _check_url_secret(values.get("url"))
-        servers[name] = CommentedMap(values)
-        _save(data)
-        return _server_info(name, servers[name])
+        saved: CommentedMap | None = None
+
+        # 在服务器列表末尾插入配置块
+        def add_server(
+            source: str,
+            data: CommentedMap,
+            servers: CommentedMap,
+            had_mcp: bool,
+            had_servers: bool,
+        ) -> str:
+            nonlocal saved
+            if name in servers:
+                raise MCPConfigManagementError(409, f"MCP 服务器已存在：{name}")
+            _check_secret_values(values.get("headers"))
+            _check_secret_values(values.get("env"))
+            _check_url_secret(values.get("url"))
+            servers[name] = CommentedMap(values)
+            saved = servers[name]
+            newline = "\r\n" if "\r\n" in source else "\n"
+            lines = source.splitlines(keepends=True)
+            if not had_mcp:
+                separator = "" if source.endswith(("\n", "\r")) else newline
+                return source + separator + render_yaml_fragment(
+                    CommentedMap({"mcp": CommentedMap({"servers": servers})}), newline
+                )
+            if not had_servers:
+                fragment = render_yaml_fragment(
+                    CommentedMap({"mcp": CommentedMap({"servers": servers})}), newline
+                )
+                addition = "".join(fragment.splitlines(keepends=True)[1:])
+                start = data.lc.key("mcp")[0]
+                original = lines[start].rstrip("\r\n")
+                if not re.match(r"^mcp:\s*(?:#.*)?$", original):
+                    comment = original.partition("#")[2]
+                    header = "mcp:" + (" #" + comment if comment else "") + newline
+                    return "".join(lines[:start]) + header + addition + "".join(lines[start + 1:])
+                insert_at = yaml_block_end(lines, start, 0)
+                separator = newline if insert_at and not lines[insert_at - 1].endswith("\n") else ""
+                return "".join(lines[:insert_at]) + separator + addition + "".join(lines[insert_at:])
+            if len(servers) == 1:
+                header = data["mcp"].lc.key("servers")[0]
+                original = lines[header].rstrip("\r\n")
+                comment = original.partition("#")[2]
+                replacement = "  servers:" + (" #" + comment if comment else "") + newline
+                replacement += _render_server(name, saved, newline)
+                return "".join(lines[:header]) + replacement + "".join(lines[header + 1:])
+
+            previous = list(servers)[-2]
+            start = servers.lc.key(previous)[0]
+            insert_at = yaml_block_end(lines, start, 4)
+            separator = newline if insert_at and not lines[insert_at - 1].endswith("\n") else ""
+            return (
+                "".join(lines[:insert_at])
+                + separator
+                + _render_server(name, saved, newline)
+                + "".join(lines[insert_at:])
+            )
+
+        _edit_config(add_server)
+        assert saved is not None
+        return _server_info(name, saved)
 
 
 # 合并服务器配置字段
@@ -185,23 +275,62 @@ def _merge_server(target: CommentedMap, changes: dict[str, Any]) -> None:
 # 修改服务器配置
 def update_mcp_server(name: str, changes: dict[str, Any]) -> MCPServerConfigInfo:
     with _write_lock:
-        data, servers = _read_servers()
-        target = servers.get(name)
-        if target is None:
-            raise MCPConfigManagementError(404, f"MCP 服务器不存在：{name}")
-        _merge_server(target, changes)
-        _save(data)
-        return _server_info(name, target)
+        saved: CommentedMap | None = None
+
+        # 只替换目标服务器配置块
+        def change_server(
+            source: str,
+            data: CommentedMap,
+            servers: CommentedMap,
+            had_mcp: bool,
+            had_servers: bool,
+        ) -> str:
+            nonlocal saved
+            target = servers.get(name)
+            if target is None:
+                raise MCPConfigManagementError(404, f"MCP 服务器不存在：{name}")
+            lines = source.splitlines(keepends=True)
+            start = servers.lc.key(name)[0]
+            end = yaml_block_end(lines, start, 4)
+            _merge_server(target, changes)
+            saved = target
+            newline = "\r\n" if "\r\n" in source else "\n"
+            replacement = _render_server(name, target, newline)
+            original = lines[start]
+            if re.match(r"^\s*[^:]+:\s*(?:#.*)?$", original):
+                replacement = original + "".join(replacement.splitlines(keepends=True)[1:])
+            return "".join(lines[:start]) + replacement + "".join(lines[end:])
+
+        _edit_config(change_server)
+        assert saved is not None
+        return _server_info(name, saved)
 
 
 # 删除服务器
 def delete_mcp_server(name: str) -> None:
     with _write_lock:
-        data, servers = _read_servers()
-        if name not in servers:
-            raise MCPConfigManagementError(404, f"MCP 服务器不存在：{name}")
-        del servers[name]
-        # 空映射保持行内格式，避免行尾注释后出现顶格的 {}
-        if not servers:
+        # 只移除目标服务器配置块
+        def remove_server(
+            source: str,
+            data: CommentedMap,
+            servers: CommentedMap,
+            had_mcp: bool,
+            had_servers: bool,
+        ) -> str:
+            if name not in servers:
+                raise MCPConfigManagementError(404, f"MCP 服务器不存在：{name}")
+            lines = source.splitlines(keepends=True)
+            start = servers.lc.key(name)[0]
+            end = yaml_block_end(lines, start, 4)
+            del servers[name]
+            if servers:
+                return "".join(lines[:start] + lines[end:])
             servers.fa.set_flow_style()
-        _save(data)
+            header = data["mcp"].lc.key("servers")[0]
+            original = lines[header].rstrip("\r\n")
+            comment = original.partition("#")[2]
+            newline = "\r\n" if "\r\n" in source else "\n"
+            replacement = "  servers: {}" + (" #" + comment if comment else "") + newline
+            return "".join(lines[:header]) + replacement + "".join(lines[header + 1:start] + lines[end:])
+
+        _edit_config(remove_server)

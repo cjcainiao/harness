@@ -25,7 +25,7 @@ export interface ModelInfo {
 
 /** 获取模型列表，第一项为默认模型 */
 export async function fetchModels(): Promise<ModelInfo[]> {
-  const result = await requestUtil.get<ApiResult<ModelInfo[]>>('/api/config/models')
+  const result = await requestUtil.get<ApiResult<ModelInfo[]>>('/api/chat/models')
 
   if (result.code !== 200) {
     throw new Error(result.message || '获取模型列表失败')
