@@ -43,14 +43,14 @@
               selectedFile ? formatSize(selectedFile.size) : '支持 .skill、.zip、.7z、tar 压缩包'
             }}</span>
           </label>
-          <p class="form-note">目前只预览页面交互，选择的文件不会上传，也不会安装到后端。</p>
+          <p class="form-note">技能名称与说明将从压缩包内的 SKILL.md 读取。</p>
         </div>
         <footer class="dialog-footer">
           <button type="button" class="cancel-button" :disabled="saving" @click="close">
             取消
           </button>
           <button type="submit" class="submit-button" :disabled="saving || !selectedFile">
-            {{ saving ? '处理中…' : '添加到预览列表' }}
+            {{ saving ? '安装中…' : '安装技能包' }}
           </button>
         </footer>
       </form>
@@ -191,7 +191,7 @@ function submit(): void {
   overflow: hidden;
   color: #222;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

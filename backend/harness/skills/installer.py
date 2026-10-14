@@ -15,6 +15,11 @@ from harness.skills.loader import Skill, read_frontmatter, resolve_skills_dir
 from harness.utils.archive_util import extract_archive
 
 
+# 技能名称无效
+class InvalidSkillNameError(ValueError):
+    pass
+
+
 # 工作空间临时目录
 def _temp_dir() -> Path:
     workspace = Path(get_app_config().system.workspace_dir)
@@ -31,9 +36,9 @@ def public_dir() -> Path:
 # 校验技能目录名
 def _validate_name(name: str) -> None:
     if not isinstance(name, str) or not name or name != name.strip():
-        raise ValueError(f"技能 name 必须是非空且无首尾空格的字符串：{name}")
+        raise InvalidSkillNameError(f"技能 name 必须是非空且无首尾空格的字符串：{name}")
     if re.fullmatch(get_app_config().skills.name_pattern, name) is None:
-        raise ValueError(f"技能 name 不符合命名规则：{name}")
+        raise InvalidSkillNameError(f"技能 name 不符合命名规则：{name}")
     if (
         name in {".", ".."}
         or Path(name).name != name
@@ -41,7 +46,7 @@ def _validate_name(name: str) -> None:
         or name.endswith((" ", "."))
         or any(char in '<>:"|?*' or ord(char) < 32 for char in name)
     ):
-        raise ValueError(f"技能 name 不能用作目录名：{name}")
+        raise InvalidSkillNameError(f"技能 name 不能用作目录名：{name}")
 
 
 # 读取技能主文件元数据

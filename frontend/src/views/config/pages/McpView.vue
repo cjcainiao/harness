@@ -145,15 +145,18 @@ function notify(type: 'success' | 'error', message: string): void {
 }
 
 // MCP 配置与状态加载
-async function loadAll(silent = false): Promise<void> {
+async function loadAll(silent = false): Promise<boolean> {
   if (!silent) loading.value = true
   loadError.value = ''
   try {
     const [nextConfigs, nextStatus] = await Promise.all([fetchMcpConfigs(), fetchMcpStatus()])
     configs.value = nextConfigs
     snapshot.value = nextStatus
+    return true
   } catch (error: unknown) {
     loadError.value = messageOf(error, '读取 MCP 服务失败')
+    if (!silent) notify('error', loadError.value)
+    return false
   } finally {
     loading.value = false
   }
@@ -198,8 +201,11 @@ async function saveServer(payload: McpServerCreate | McpServerPatch): Promise<vo
       await createMcpServer(payload as McpServerCreate)
     }
     formOpen.value = false
-    await loadAll(true)
-    notify('success', 'MCP 配置已保存')
+    if (await loadAll(true)) {
+      notify('success', 'MCP 配置已保存')
+    } else {
+      notify('error', `MCP 配置已保存，但重新读取失败：${loadError.value}`)
+    }
   } catch (error: unknown) {
     notify('error', messageOf(error, '保存 MCP 配置失败'))
   } finally {
@@ -253,8 +259,11 @@ async function removeServer(config: McpServerConfig): Promise<void> {
   busyAction.value = config.name
   try {
     await deleteMcpServer(config.name)
-    await loadAll(true)
-    notify('success', '服务已删除')
+    if (await loadAll(true)) {
+      notify('success', '服务已删除')
+    } else {
+      notify('error', `服务已删除，但重新读取失败：${loadError.value}`)
+    }
   } catch (error: unknown) {
     notify('error', messageOf(error, '删除 MCP 服务失败'))
   } finally {

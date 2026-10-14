@@ -10,7 +10,12 @@
             <p>管理对话中可用的技能包和使用状态。</p>
           </div>
         </div>
-        <button class="add-button" type="button" :disabled="busy" @click="formOpen = true">
+        <button
+          class="add-button"
+          type="button"
+          :disabled="busy || loading"
+          @click="formOpen = true"
+        >
           <Plus :size="16" :stroke-width="2" /> 添加技能包
         </button>
       </header>
@@ -43,7 +48,7 @@
             </h2>
             <p>技能说明会在 Agent 需要使用时读取。</p>
           </div>
-          <div class="filters">
+          <div v-if="skills.length" class="filters">
             <label class="search-field">
               <Search :size="16" aria-hidden="true" />
               <input
@@ -60,31 +65,34 @@
               popper-class="skill-source-popper"
             >
               <ElOption label="全部来源" value="all" />
-              <ElOption label="项目技能" value="custom" />
+              <ElOption label="内置技能" value="custom" />
               <ElOption label="第三方" value="public" />
             </ElSelect>
           </div>
         </div>
 
         <div v-if="loading" class="state-panel">正在读取技能列表…</div>
-        <div v-else-if="loadError" class="state-panel error-panel">
+        <div v-else-if="loadError && !skills.length" class="state-panel error-panel">
           <p>{{ loadError }}</p>
           <button type="button" @click="reload">重试</button>
         </div>
-        <div v-else-if="!filteredSkills.length" class="state-panel">
-          <h3>没有找到匹配的技能</h3>
-          <p>试试其他名称或来源。</p>
-          <button type="button" @click="clearFilters">清除筛选</button>
-        </div>
-        <div v-else class="skill-list">
-          <SkillCard
-            v-for="skill in filteredSkills"
-            :key="`${skill.source}:${skill.name}`"
-            :skill="skill"
-            :busy="busy"
-            @toggle="toggleSkill(skill)"
-            @remove="removeSkill(skill)"
-          />
+        <div v-else class="skill-results">
+          <p v-if="loadError" class="inline-error" role="alert">{{ loadError }}</p>
+          <div v-if="!filteredSkills.length" class="state-panel">
+            <h3>没有找到匹配的技能</h3>
+            <p>试试其他名称或来源。</p>
+            <button type="button" @click="clearFilters">清除筛选</button>
+          </div>
+          <div v-else class="skill-list">
+            <SkillCard
+              v-for="skill in filteredSkills"
+              :key="`${skill.source}:${skill.name}`"
+              :skill="skill"
+              :busy="busy"
+              @toggle="toggleSkill(skill)"
+              @remove="removeSkill(skill)"
+            />
+          </div>
         </div>
       </section>
 
@@ -103,10 +111,10 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox, ElOption, ElSelect } from 'element-plus'
 import { BookOpenCheck, Plus, Search } from 'lucide-vue-next'
 import {
-  addSkillPreview,
+  deleteSkill,
+  installSkill,
   listSkillConfigs,
-  removeSkillPreview,
-  setSkillPreviewEnabled,
+  setSkillEnabled,
   type SkillItem,
 } from '@/api/skills'
 import SkillCard from '../components/SkillCard.vue'
@@ -147,7 +155,7 @@ function notify(type: 'success' | 'error', message: string): void {
   ElMessage({ type, message, plain: true })
 }
 
-// 技能预览列表加载
+// 技能列表加载
 async function loadSkills(): Promise<void> {
   loading.value = true
   loadError.value = ''
@@ -169,30 +177,34 @@ function clearFilters(): void {
   sourceFilter.value = 'all'
 }
 
-// 技能包添加预览
+// 上传并安装技能包
 async function addSkill(file: File): Promise<void> {
   if (busy.value) return
   busyAction.value = 'add'
   try {
-    await addSkillPreview(file)
-    skills.value = await listSkillConfigs()
+    const installed = await installSkill(file)
+    skills.value = [...skills.value, installed]
+    loadError.value = ''
+    clearFilters()
     formOpen.value = false
-    notify('success', '已加入预览列表，尚未安装到后端')
+    notify('success', '技能包已安装')
   } catch (error: unknown) {
-    notify('error', messageOf(error, '添加技能失败'))
+    notify('error', messageOf(error, '安装技能包失败'))
   } finally {
     busyAction.value = null
   }
 }
 
-// 第三方技能启停预览
+// 第三方技能启停
 async function toggleSkill(skill: SkillItem): Promise<void> {
   if (busy.value || skill.source !== 'public') return
   busyAction.value = skill.name
   try {
-    await setSkillPreviewEnabled(skill.name, !skill.enabled)
-    skills.value = await listSkillConfigs()
-    notify('success', '预览状态已更新，尚未写入后端')
+    const updated = await setSkillEnabled(skill.name, !skill.enabled)
+    skills.value = skills.value.map((item) =>
+      item.source === 'public' && item.name === skill.name ? updated : item,
+    )
+    notify('success', updated.enabled ? '技能已启用' : '技能已停用')
   } catch (error: unknown) {
     notify('error', messageOf(error, '切换技能失败'))
   } finally {
@@ -200,27 +212,25 @@ async function toggleSkill(skill: SkillItem): Promise<void> {
   }
 }
 
-// 第三方技能删除预览
+// 删除第三方技能
 async function removeSkill(skill: SkillItem): Promise<void> {
   if (busy.value || skill.source !== 'public') return
   try {
-    await ElMessageBox.confirm(
-      '这只会从当前预览列表中移除技能，不会删除后端文件。',
-      `删除 ${skill.name}？`,
-      {
-        confirmButtonText: '从预览中删除',
-        cancelButtonText: '取消',
-        confirmButtonClass: 'skill-delete-confirm',
-      },
-    )
+    await ElMessageBox.confirm('删除后会移除技能包文件，无法撤销。', `删除 ${skill.name}？`, {
+      confirmButtonText: '删除技能包',
+      cancelButtonText: '取消',
+      confirmButtonClass: 'skill-delete-confirm',
+    })
   } catch {
     return
   }
   busyAction.value = skill.name
   try {
-    await removeSkillPreview(skill.name)
-    skills.value = await listSkillConfigs()
-    notify('success', '已从预览列表删除')
+    await deleteSkill(skill.name)
+    skills.value = skills.value.filter(
+      (item) => item.source !== 'public' || item.name !== skill.name,
+    )
+    notify('success', '技能包已删除')
   } catch (error: unknown) {
     notify('error', messageOf(error, '删除技能失败'))
   } finally {
@@ -389,6 +399,7 @@ onMounted(() => void loadSkills())
   background: transparent;
   color: #222;
   font-size: 12px;
+  font-weight: 400;
 }
 .search-field input::placeholder {
   color: #aaa;
@@ -400,6 +411,7 @@ onMounted(() => void loadSkills())
 .source-filter {
   width: 134px;
   --el-color-primary: #333;
+  font-weight: 400;
 }
 .source-filter :deep(.el-select__wrapper) {
   min-height: 36px;
@@ -416,6 +428,7 @@ onMounted(() => void loadSkills())
 .source-filter :deep(.el-select__selected-item) {
   color: #444;
   font-size: 12px;
+  font-weight: 400;
 }
 .source-filter :deep(.el-select__caret) {
   color: #858585;
@@ -429,6 +442,7 @@ onMounted(() => void loadSkills())
   height: 34px;
   color: #444;
   font-size: 12px;
+  font-weight: 400;
   line-height: 34px;
 }
 :global(.skill-source-popper .el-select-dropdown__item.is-hovering) {
@@ -437,12 +451,16 @@ onMounted(() => void loadSkills())
 :global(.skill-source-popper .el-select-dropdown__item.is-selected) {
   background: #ededed;
   color: #222;
-  font-weight: 600;
+  font-weight: 400;
 }
 .skill-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: stretch;
+  gap: 12px;
+}
+.skill-results {
+  display: grid;
   gap: 12px;
 }
 .state-panel {
@@ -466,7 +484,28 @@ onMounted(() => void loadSkills())
   margin-top: 9px;
 }
 .error-panel {
-  color: #965f55;
+  min-height: 230px;
+  border-radius: 0;
+  color: #666;
+}
+.error-panel button {
+  justify-self: center;
+  min-height: auto;
+  margin-top: 0;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: #171717;
+  font-size: 13px;
+  font-weight: 400;
+  text-decoration: underline;
+}
+.inline-error {
+  border: 1px solid #e3c9c3;
+  padding: 10px 14px;
+  background: #fbf4f1;
+  color: #89594e;
+  font-size: 12px;
 }
 :global(.skill-delete-confirm.el-button) {
   --el-button-bg-color: #171717;
@@ -481,6 +520,10 @@ onMounted(() => void loadSkills())
   .add-button:hover,
   .state-panel button:hover {
     background: #333;
+  }
+  .error-panel button:hover {
+    background: none;
+    color: #555;
   }
 }
 .add-button:focus-visible,

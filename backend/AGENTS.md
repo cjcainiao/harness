@@ -15,6 +15,9 @@
 ## 网关层
 - `app/gateway/` 按业务模块建目录，不在根目录新增单个业务接口文件；目前有 `chat/` 和 `config/`
 - `chat/` 放对话流、历史、斜杠菜单、上传接口；`config/` 放模型与 MCP 配置接口。相关业务代码和请求/响应结构分别放在 `app/services/<模块>/`、`app/schemas/<模块>/`
+- `app/services/<模块>/` 的业务文件统一命名为 `<业务>_service.py`，如 `model_service.py`；`__init__.py` 保留原名
+- `app/schemas/<模块>/` 的结构文件统一命名为 `<业务>_schema.py`，如 `model_schema.py`；`__init__.py` 保留原名，通用响应结构使用 `app/schemas/result.py`
+- 调整业务或结构文件名时，同步更新网关、业务、结构模块之间的导入路径及测试引用
 - 每个模块的 `__init__.py` 定义一个带模块前缀的 `router`，并通过 `include_router` 汇总本模块的子路由；`chat` 用 `/chat`，`config` 用 `/config`
 - 子路由只写模块前缀之后的路径，不重复写 `/chat` 或 `/config`；例如对话流是 `/stream`，MCP 子路由前缀是 `/mcp`
 - `app/gateway/__init__.py` 只导出模块路由，`app/main.py` 只注册一次模块路由并加上 `system.api_prefix`；不要再单独注册模块内的子路由
@@ -22,8 +25,9 @@
 - 修改接口路径时同步更新前端调用、服务端生成的地址和相关测试；已保存的地址要考虑兼容
 
 ## 配置系统
-- `config.yaml` 是主配置文件，程序可读写，YAML 读写统一用 ruamel（round-trip 保留注释）
+- `config.yaml` 是主配置文件，程序可读写；YAML 解析用 ruamel，修改现有文件时保留原始注释、引号、缩进和换行
 - 写回用合并语义：只更新请求传来的字段，未传字段保留；原子替换
+- 修改现有 YAML 统一调用 `harness/utils/yaml_util.py:edit_yaml_text`，工具内部锁住读取、修改和原子替换；业务模块不另设写锁，也不整份重新序列化配置文件
 - 对外接口返回模型配置不暴露 `api_key`、`base_url`
 - 可调参数只认 `config.yaml` 一个出处，模块里不留同名的硬编码常量（如锁等待时长走 `system.db_busy_timeout_ms`，不写 `BUSY_TIMEOUT_MS`）
 - 新增配置键要同步补 `config.example.yaml`；`Field(description=...)` 与 YAML 行内注释同一句话，注释列与相邻行对齐；`config_version` 不因加键 bump
@@ -34,7 +38,7 @@
 - 库文件的相对路径统一由 `harness/runtime/db_path.py:resolve_db_path` 按后端项目根展开，不受启动目录影响
 - 数据库启动入口在 `app/init_db.py`，集中初始化应用表 `chat_thread`、`chat_turn`、`slash_command` 和检查点表 `checkpoints`、`writes`
 - 历史表 DDL 唯一事实源在 `harness/storage/schema.py`，语句全部幂等，启动时执行一遍 `SCHEMA_SCRIPT`
-- 斜杠命令表 DDL 与初始数据由 `app/schemas/chat/slash.py:init_slash_commands` 初始化，`app/init_db.py` 在启动时调用
+- 斜杠命令表 DDL 与初始数据由 `app/schemas/chat/slash_schema.py:init_slash_commands` 初始化，`app/init_db.py` 在启动时调用
 - 不记版本号、不做迁移链（不用 `user_version`）；给已存在的表改列要自己补 DDL 或删库重建
 - 建表失败直接抛出让启动失败，不静默降级成"没有历史功能"
 - 写历史走同步短事务（`connect_history_db`），写失败只 `logger.warning` 不打断回复

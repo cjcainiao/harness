@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import os
 import threading
-from io import StringIO
 from collections.abc import Callable
+from io import StringIO
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 from ruamel.yaml import YAML
@@ -27,45 +28,52 @@ def load_yaml(path: str | Path) -> Any:
 # 加载 yaml，保留注释
 def load_yaml_keep_comment(path: str | Path) -> CommentedMap:
     yaml = YAML()
+    yaml.preserve_quotes = True
     with open(path, encoding="utf-8") as f:
         data = yaml.load(f)
     return data if data is not None else CommentedMap()
 
 
-# 写 yaml，保留注释，原子替换
-def dump_yaml(path: str | Path, data: Any) -> None:
-    yaml = YAML()
-    yaml.preserve_quotes = True
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_name(path.name + ".tmp")
-    with _lock:
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            yaml.dump(data, f)
-        os.replace(tmp_path, path)
-
-
-# 局部编辑 yaml 文本，原子替换
+# 局部编辑 yaml 文本，保留未修改内容并原子替换
 def edit_yaml_text(path: str | Path, edit: Callable[[str], str]) -> None:
     path = Path(path)
-    tmp_path = path.with_name(path.name + ".tmp")
     with _lock:
         with open(path, encoding="utf-8", newline="") as f:
             source = f.read()
         updated = edit(source)
-        with open(tmp_path, "w", encoding="utf-8", newline="") as f:
-            f.write(updated)
-        os.replace(tmp_path, path)
+        if not isinstance(updated, str):
+            raise TypeError("YAML 编辑结果必须是文本")
+        YAML(typ="safe").load(updated)
+        if updated == source:
+            return
+
+        tmp_path: Path | None = None
+        try:
+            with NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                newline="",
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+                dir=path.parent,
+                delete=False,
+            ) as f:
+                tmp_path = Path(f.name)
+                f.write(updated)
+            os.replace(tmp_path, path)
+        finally:
+            if tmp_path is not None:
+                tmp_path.unlink(missing_ok=True)
 
 
 # 序列化局部配置块
-def render_yaml_fragment(data: Any, newline: str) -> str:
+def render_yaml_fragment(data: Any, newline: str, mapping_indent: int = 2) -> str:
     yaml = YAML()
     yaml.preserve_quotes = True
-    yaml.indent(mapping=2, sequence=4, offset=2)
+    yaml.indent(mapping=mapping_indent, sequence=mapping_indent * 2, offset=mapping_indent)
     stream = StringIO()
     yaml.dump(data, stream)
-    lines = stream.getvalue().replace("\n", newline).splitlines(keepends=True)
+    lines = stream.getvalue().replace("\r\n", "\n").replace("\r", "\n").replace("\n", newline).splitlines(keepends=True)
     while lines and (not lines[-1].strip() or lines[-1].lstrip().startswith("#")):
         lines.pop()
     return "".join(lines)

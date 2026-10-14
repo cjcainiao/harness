@@ -9,9 +9,9 @@ from fastapi import APIRouter, File, Form, Path, Query, UploadFile
 from fastapi.responses import FileResponse
 
 from app.exceptions import AppException
-from app.schemas.chat.uploads import UploadInfo
+from app.schemas.chat.uploads_schema import UploadInfo
 from app.schemas.result import Result
-from app.services.chat.uploads import (
+from app.services.chat.uploads_service import (
     INLINE_IMAGE_TYPES,
     UploadStoreError,
     delete_upload,

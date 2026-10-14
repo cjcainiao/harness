@@ -611,7 +611,7 @@ function submitForm(): void {
   background: #fff;
   color: #222;
   font-size: 12px;
-  font-weight: 450;
+  font-weight: 400;
   outline: none;
 }
 .field textarea {
@@ -636,6 +636,7 @@ function submitForm(): void {
 .transport-select {
   width: 100%;
   --el-color-primary: #333;
+  font-weight: 400;
 }
 .transport-select :deep(.el-select__wrapper) {
   min-height: 39px;
@@ -652,7 +653,7 @@ function submitForm(): void {
 .transport-select :deep(.el-select__selected-item) {
   color: #222;
   font-size: 12px;
-  font-weight: 450;
+  font-weight: 400;
 }
 .transport-select :deep(.el-select__caret) {
   color: #858585;
@@ -666,6 +667,7 @@ function submitForm(): void {
   height: 34px;
   color: #444;
   font-size: 12px;
+  font-weight: 400;
   line-height: 34px;
 }
 :global(.mcp-transport-popper .el-select-dropdown__item.is-hovering) {
@@ -674,7 +676,7 @@ function submitForm(): void {
 :global(.mcp-transport-popper .el-select-dropdown__item.is-selected) {
   background: #ededed;
   color: #222;
-  font-weight: 600;
+  font-weight: 400;
 }
 .field small,
 .field-hint {

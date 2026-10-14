@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.chat.uploads import UploadInfo
+from app.schemas.chat.uploads_schema import UploadInfo
 
 
 # 轮次渲染段

@@ -18,6 +18,12 @@ _ARCHIVE_SUFFIXES = (
 )
 
 
+# 识别压缩包格式
+def archive_suffix(filename: str) -> str | None:
+    name = filename.lower()
+    return next((suffix for suffix in _ARCHIVE_SUFFIXES if name.endswith(suffix)), None)
+
+
 # 校验压缩包内的路径
 def _member_parts(name: str) -> tuple[str, ...]:
     if not name or name.startswith(("/", "\\")) or "\\" in name:
@@ -71,8 +77,7 @@ def extract_archive(
     if not archive.is_file():
         raise FileNotFoundError(f"压缩包不存在：{archive}")
 
-    name = archive.name.lower()
-    suffix = next((item for item in _ARCHIVE_SUFFIXES if name.endswith(item)), None)
+    suffix = archive_suffix(archive.name)
     if suffix is None:
         raise ValueError(f"不支持的压缩包格式：{archive}")
     if max_entries is not None and max_entries <= 0:

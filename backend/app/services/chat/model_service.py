@@ -1,6 +1,6 @@
 # 对话模型业务
 
-from app.schemas.chat.model import ModelInfo
+from app.schemas.chat.model_schema import ModelInfo
 from harness.config.app_config import get_app_config
 
 

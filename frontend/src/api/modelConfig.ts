@@ -33,7 +33,7 @@ export type ModelConfigInput = Omit<
   max_retries: number
 }
 
-// 未接入新增、修改和默认模型接口时的页面预览数据
+// 模型列表缓存
 let previewModels: ModelConfigItem[] = []
 let persistedModelNames = new Set<string>()
 
@@ -60,13 +60,16 @@ export async function createModelConfig(input: ModelConfigInput): Promise<ModelC
   if (previewModels.some((model) => model.model_name === input.model_name)) {
     throw new Error(`模型已存在：${input.model_name}`)
   }
-  const { api_key, base_url, ...fields } = input
-  const model = copy({
-    ...fields,
-    base_url_configured: Boolean(base_url),
-    api_key_configured: Boolean(api_key),
-  })
+  const result = await requestUtil.post<ApiResult<ModelConfigItem>, ModelConfigInput>(
+    '/api/config/models',
+    input,
+  )
+  if (result.code !== 200 || result.data === null) {
+    throw new Error(result.message || '添加模型失败')
+  }
+  const model = copy(result.data)
   previewModels.push(model)
+  persistedModelNames.add(model.model_name)
   return copy(model)
 }
 
@@ -77,21 +80,52 @@ export async function updateModelConfig(
 ): Promise<ModelConfigItem> {
   const index = previewModels.findIndex((model) => model.model_name === name)
   if (index < 0) throw new Error(`模型不存在：${name}`)
-  const { api_key, base_url, ...fields } = input
-  const model = copy({
-    ...fields,
-    base_url_configured: Boolean(base_url) || previewModels[index]!.base_url_configured,
-    api_key_configured: Boolean(api_key) || previewModels[index]!.api_key_configured,
+  const changes: Partial<Omit<ModelConfigInput, 'model_name'>> = {
+    display_name: input.display_name,
+    description: input.description,
+    provider: input.provider,
+    use: input.use,
+    timeout: input.timeout,
+    max_retries: input.max_retries,
+    max_tokens: input.max_tokens,
+    supports_thinking: input.supports_thinking,
+    reasoning_levels: input.reasoning_levels,
+    when_thinking_enabled: input.when_thinking_enabled,
+    when_thinking_disabled: input.when_thinking_disabled,
+    supports_vision: input.supports_vision,
+    context_window: input.context_window,
+  }
+  // 编辑时保留未填写的地址和密钥
+  if (input.base_url) changes.base_url = input.base_url
+  if (input.api_key) changes.api_key = input.api_key
+  const result = await requestUtil.request<ApiResult<ModelConfigItem>, typeof changes>({
+    method: 'PATCH',
+    url: `/api/config/models/${encodeURIComponent(name)}`,
+    data: changes,
   })
+  if (result.code !== 200 || result.data === null) {
+    throw new Error(result.message || '修改模型失败')
+  }
+  const model = copy(result.data)
   previewModels[index] = model
+  persistedModelNames.add(model.model_name)
   return copy(model)
 }
 
-/** 将模型移到首位 */
+/** 设置默认模型并返回最新顺序 */
 export async function setDefaultModel(name: string): Promise<ModelConfigItem[]> {
-  const index = previewModels.findIndex((model) => model.model_name === name)
-  if (index < 0) throw new Error(`模型不存在：${name}`)
-  previewModels.unshift(previewModels.splice(index, 1)[0]!)
+  if (!previewModels.some((model) => model.model_name === name)) {
+    throw new Error(`模型不存在：${name}`)
+  }
+  const result = await requestUtil.request<ApiResult<ModelConfigItem[]>>({
+    method: 'PATCH',
+    url: `/api/config/models/${encodeURIComponent(name)}/default`,
+  })
+  if (result.code !== 200 || result.data === null) {
+    throw new Error(result.message || '设置默认模型失败')
+  }
+  previewModels = result.data.map(copy)
+  persistedModelNames = new Set(previewModels.map((model) => model.model_name))
   return previewModels.map(copy)
 }
 
@@ -101,9 +135,9 @@ export async function deleteModelConfig(name: string): Promise<boolean> {
   if (index < 0) throw new Error(`模型不存在：${name}`)
   const persisted = persistedModelNames.has(name)
   if (persisted) {
-    const result = await requestUtil.delete<ApiResult<null>>('/api/config/models', {
-      params: { model_name: name },
-    })
+    const result = await requestUtil.delete<ApiResult<null>>(
+      `/api/config/models/${encodeURIComponent(name)}`,
+    )
     if (result.code !== 200) throw new Error(result.message || '删除模型失败')
     persistedModelNames.delete(name)
   }

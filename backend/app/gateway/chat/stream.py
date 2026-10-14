@@ -5,8 +5,8 @@ import asyncio
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from app.schemas.chat.stream import ChatAttachment, ChatRequest
-from app.services.chat.uploads import UploadStoreError, get_upload, upload_preview_url
+from app.schemas.chat.stream_schema import ChatAttachment, ChatRequest
+from app.services.chat.uploads_service import UploadStoreError, get_upload, upload_preview_url
 from harness.agents.thread_state import UploadedFileInfo
 from harness.models.factory import validate_model_options
 from harness.runtime.stream import stream_agent

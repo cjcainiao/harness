@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Path, Query
 
-from app.schemas.chat.history import (
+from app.schemas.chat.history_schema import (
     QuestionInfo,
     ThreadInfo,
     TurnInfo,

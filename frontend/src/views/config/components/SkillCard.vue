@@ -6,8 +6,8 @@
         <div class="title-group">
           <div class="title-line">
             <h3>{{ skill.name }}</h3>
-            <span class="source-badge">{{
-              skill.source === 'custom' ? '项目技能' : '第三方'
+            <span class="source-badge" :class="{ 'is-builtin': skill.source === 'custom' }">{{
+              skill.source === 'custom' ? '内置技能' : '第三方'
             }}</span>
           </div>
           <span class="document-name">SKILL.md</span>
@@ -93,6 +93,9 @@ defineEmits<{ toggle: []; remove: [] }>()
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
+}
+.source-badge.is-builtin {
+  color: #956300;
 }
 .document-name {
   display: block;

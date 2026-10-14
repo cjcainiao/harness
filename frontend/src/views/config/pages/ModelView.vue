@@ -45,7 +45,7 @@
             </h2>
             <p>列表第一项是新对话的默认模型。</p>
           </div>
-          <div class="filters">
+          <div v-if="models.length" class="filters">
             <label class="search-field">
               <Search :size="16" aria-hidden="true" />
               <input
@@ -73,7 +73,7 @@
         </div>
 
         <div v-if="loading" class="state-panel">正在读取模型配置…</div>
-        <div v-else-if="loadError" class="state-panel error-panel">
+        <div v-else-if="loadError" class="state-panel error-panel" role="alert">
           <p>{{ loadError }}</p>
           <button type="button" @click="reload">重试</button>
         </div>
@@ -171,6 +171,7 @@ async function loadModels(): Promise<void> {
     models.value = await listModelConfigs()
   } catch (error: unknown) {
     loadError.value = messageOf(error, '读取模型配置失败')
+    notify('error', loadError.value)
   } finally {
     loading.value = false
   }
@@ -200,6 +201,7 @@ async function saveModel(input: ModelConfigInput): Promise<void> {
   if (busy.value) return
   busyAction.value = 'save'
   try {
+    const isEditing = Boolean(editingModel.value)
     if (editingModel.value) {
       const updated = await updateModelConfig(editingModel.value.model_name, input)
       models.value = models.value.map((model) =>
@@ -210,7 +212,7 @@ async function saveModel(input: ModelConfigInput): Promise<void> {
       models.value = [...models.value, created]
     }
     formOpen.value = false
-    notify('success', '模型配置已更新（仅预览）')
+    notify('success', isEditing ? '模型配置已保存' : '模型已添加')
   } catch (error: unknown) {
     notify('error', messageOf(error, '保存模型失败'))
   } finally {
@@ -224,7 +226,7 @@ async function makeDefault(model: ModelConfigItem): Promise<void> {
   busyAction.value = model.model_name
   try {
     models.value = await setDefaultModel(model.model_name)
-    notify('success', '默认模型已更新（仅预览）')
+    notify('success', '默认模型已更新')
   } catch (error: unknown) {
     notify('error', messageOf(error, '设置默认模型失败'))
   } finally {
@@ -240,7 +242,9 @@ async function removeModel(model: ModelConfigItem): Promise<void> {
     await ElMessageBox.confirm(
       persisted
         ? models.value[0]?.model_name === model.model_name
-          ? '删除默认模型后，配置列表中的下一项将成为默认模型。'
+          ? models.value.length > 1
+            ? '删除默认模型后，配置列表中的下一项将成为默认模型。'
+            : '删除后将没有默认模型，需要添加模型才能继续使用对话。'
           : '删除后，这个模型将从后端配置中移除。'
         : '这个模型尚未保存，仅从当前预览列表中移除。',
       `删除 ${model.display_name}？`,
@@ -436,6 +440,7 @@ onMounted(() => void loadModels())
   background: transparent;
   color: #222;
   font-size: 12px;
+  font-weight: 400;
 }
 .search-field input::placeholder {
   color: #aaa;
@@ -443,6 +448,7 @@ onMounted(() => void loadModels())
 .provider-filter {
   width: 134px;
   --el-color-primary: #333;
+  font-weight: 400;
 }
 .provider-filter :deep(.el-select__wrapper) {
   min-height: 36px;
@@ -459,6 +465,7 @@ onMounted(() => void loadModels())
 .provider-filter :deep(.el-select__selected-item) {
   color: #444;
   font-size: 12px;
+  font-weight: 400;
 }
 .provider-filter :deep(.el-select__caret) {
   color: #858585;
@@ -476,6 +483,7 @@ onMounted(() => void loadModels())
   height: 34px;
   color: #444;
   font-size: 12px;
+  font-weight: 400;
   line-height: 34px;
 }
 :global(.model-provider-popper .el-select-dropdown__item.is-hovering) {
@@ -484,7 +492,7 @@ onMounted(() => void loadModels())
 :global(.model-provider-popper .el-select-dropdown__item.is-selected) {
   background: #ededed;
   color: #222;
-  font-weight: 600;
+  font-weight: 400;
 }
 .model-list {
   display: grid;
@@ -513,7 +521,26 @@ onMounted(() => void loadModels())
   margin-top: 9px;
 }
 .error-panel {
-  color: #965f55;
+  min-height: 230px;
+  place-content: center;
+  border-radius: 0;
+  color: #666;
+}
+.error-panel button {
+  justify-self: center;
+  min-height: auto;
+  margin-top: 0;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: #171717;
+  text-decoration: underline;
+}
+@media (hover: hover) {
+  .state-panel.error-panel button:hover {
+    background: none;
+    color: #444;
+  }
 }
 :global(.model-delete-confirm.el-button) {
   --el-button-bg-color: #171717;

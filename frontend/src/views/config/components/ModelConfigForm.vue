@@ -516,7 +516,7 @@ function submitForm(): void {
   background: #fff;
   color: #222;
   font-size: 12px;
-  font-weight: 450;
+  font-weight: 400;
   outline: none;
 }
 .field textarea {

@@ -4,9 +4,9 @@ import asyncio
 
 from fastapi import APIRouter
 
-from app.schemas.chat.model import ModelInfo
+from app.schemas.chat.model_schema import ModelInfo
 from app.schemas.result import Result
-from app.services.chat.model import list_chat_models
+from app.services.chat.model_service import list_chat_models
 
 
 router = APIRouter(prefix="/models", tags=["对话模型"])

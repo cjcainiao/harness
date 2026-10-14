@@ -4,7 +4,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.schemas.chat.uploads import UploadInfo
+from app.schemas.chat.uploads_schema import UploadInfo
 from harness.models.factory import ReasoningEffort
 
 

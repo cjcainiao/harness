@@ -12,6 +12,34 @@ export interface ApiResult<T = unknown> {
   data: T | null
 }
 
+// 提取接口返回的错误消息
+function responseMessage(data: unknown): string | undefined {
+  if (typeof data === 'string') {
+    const message = data.trim()
+    return message && !message.startsWith('<') ? message : undefined
+  }
+  if (!data || typeof data !== 'object') return undefined
+
+  const payload = data as Record<string, unknown>
+  for (const field of ['message', 'detail']) {
+    const value = payload[field]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+
+  if (Array.isArray(payload.detail)) {
+    const messages = payload.detail
+      .map((item: unknown) => {
+        if (typeof item === 'string') return item
+        if (!item || typeof item !== 'object') return ''
+        const message = (item as Record<string, unknown>).msg
+        return typeof message === 'string' ? message : ''
+      })
+      .filter(Boolean)
+    if (messages.length) return messages.join('；')
+  }
+  return undefined
+}
+
 /** 统一的请求错误 */
 export class RequestError extends Error {
   readonly status?: number
@@ -67,7 +95,7 @@ export class RequestUtil {
 
     this.client.interceptors.response.use(
       (response) => response.data,
-      (error: AxiosError) => Promise.reject(this.normalizeError(error)),
+      (error: unknown) => Promise.reject(this.normalizeError(error)),
     )
   }
 
@@ -88,18 +116,34 @@ export class RequestUtil {
   }
 
   /** 将 Axios 错误转换成业务层可识别的错误 */
-  private normalizeError(error: AxiosError): RequestError {
-    const responseData = error.response?.data as Partial<ApiResult> | undefined
+  private normalizeError(error: unknown): Error {
+    if (!axios.isAxiosError(error)) {
+      return error instanceof Error ? error : new Error(responseMessage(error) || '请求失败')
+    }
+
+    const responseData = error.response?.data
     const message =
-      (typeof responseData?.message === 'string' && responseData.message) ||
+      responseMessage(responseData) ||
       (error.code === 'ECONNABORTED' ? '请求超时' : undefined) ||
-      (!error.response ? '网络连接失败' : error.message) ||
-      '请求失败'
+      (!error.response
+        ? error.code === 'ERR_NETWORK'
+          ? '网络连接失败'
+          : error.message || '网络连接失败'
+        : `请求失败（HTTP ${error.response.status}）`)
+
+    const code =
+      responseData && typeof responseData === 'object' && 'code' in responseData
+        ? responseData.code
+        : undefined
+    const data =
+      responseData && typeof responseData === 'object' && 'data' in responseData
+        ? responseData.data
+        : responseData
 
     return new RequestError(message, error, {
       status: error.response?.status,
-      code: responseData?.code ?? error.code,
-      data: responseData?.data ?? error.response?.data,
+      code: typeof code === 'number' || typeof code === 'string' ? code : error.code,
+      data,
     })
   }
 

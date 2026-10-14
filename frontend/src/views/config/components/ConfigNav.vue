@@ -194,17 +194,32 @@ function openSection(routeName: string): void {
 @media (max-width: 720px) {
   .config-nav {
     width: 100%;
+    min-width: 0;
     padding: 8px 12px;
-    overflow-x: auto;
-    overflow-y: hidden;
+    overflow: hidden;
   }
   .nav-search,
   .group-label {
     display: none;
   }
-  .nav-groups,
+  .nav-groups {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    gap: 6px;
+    padding-bottom: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .nav-groups::-webkit-scrollbar {
+    display: none;
+  }
   .nav-group {
     display: flex;
+    flex: 0 0 auto;
     gap: 6px;
   }
   .nav-item {

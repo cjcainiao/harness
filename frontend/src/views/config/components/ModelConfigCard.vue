@@ -273,15 +273,26 @@ function formatTokens(value: number | null): string {
   }
   .card-footer {
     align-items: flex-start;
-    flex-direction: column;
-    padding: 11px 14px 10px 19px;
+    gap: 4px;
+    padding: 6px 10px 6px 19px;
+  }
+  .key-state {
+    min-width: 0;
+    min-height: 31px;
+    flex: 1 1 auto;
   }
   .card-actions {
-    width: 100%;
-    justify-content: flex-start;
+    width: auto;
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: 0;
   }
 }
 @media (any-pointer: coarse) {
+  .key-state {
+    min-height: 40px;
+  }
   .card-actions button {
     min-height: 40px;
   }

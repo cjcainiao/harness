@@ -1,13 +1,11 @@
-# MCP 服务器状态与配置管理接口
-
-from __future__ import annotations
+# MCP 服务器配置接口
 
 import asyncio
 
 from fastapi import APIRouter, Response
 
 from app.exceptions import AppException
-from app.schemas.config.mcp import (
+from app.schemas.config.mcp_schema import (
     MCPServerConfigInfo,
     MCPServerCreate,
     MCPServerEnabledPatch,
@@ -15,94 +13,98 @@ from app.schemas.config.mcp import (
     MCPStatusInfo,
 )
 from app.schemas.result import Result
-from app.services.config.mcp import (
-    MCPConfigManagementError,
+from app.services.config.mcp_service import (
     create_mcp_server,
     delete_mcp_server,
     list_mcp_server_configs,
-    status_info,
+    read_mcp_status,
+    refresh_mcp_status,
+    set_mcp_server_enabled,
     update_mcp_server,
 )
-from harness.config.app_config import get_app_config
-from harness.mcp.cache import get_mcp_status, refresh_mcp_discoveries
 
 
 router = APIRouter(prefix="/mcp", tags=["MCP 服务器"])
 
 
-# 查询缓存中的发现状态
+# 读取缓存中的服务器状态
 @router.get("/status", summary="查询 MCP 服务器状态")
-async def get_mcp_servers(response: Response) -> Result[MCPStatusInfo]:
+async def get_mcp_status_info(response: Response) -> Result[MCPStatusInfo]:
     response.headers["Cache-Control"] = "no-store"
-    config = get_app_config().mcp
-    return Result.success(status_info(config, get_mcp_status(config)))
+    return Result.success(read_mcp_status())
 
 
-# 强制重新发现全部 MCP 服务器
+# 刷新服务器连接与工具
 @router.post("/refresh", summary="刷新 MCP 服务器工具")
 async def refresh_mcp_servers(response: Response) -> Result[MCPStatusInfo]:
     response.headers["Cache-Control"] = "no-store"
-    config = get_app_config().mcp
-    snapshot = await refresh_mcp_discoveries(config)
-    return Result.success(status_info(config, snapshot))
+    return Result.success(await refresh_mcp_status())
 
 
-# 转换配置管理错误
-def _config_error(error: MCPConfigManagementError) -> AppException:
-    return AppException(code=error.status_code, message=str(error), status_code=error.status_code)
-
-
-# 查询不含凭据的服务器配置
+# 获取服务器配置列表
 @router.get("/servers", summary="获取 MCP 服务器配置")
 async def get_mcp_server_configs(response: Response) -> Result[list[MCPServerConfigInfo]]:
     response.headers["Cache-Control"] = "no-store"
-    try:
-        servers = await asyncio.to_thread(list_mcp_server_configs)
-    except MCPConfigManagementError as error:
-        raise _config_error(error) from error
+    servers = await asyncio.to_thread(list_mcp_server_configs)
     return Result.success(servers)
 
 
-# 新增 MCP 服务器
+# 新增服务器配置
 @router.post("/servers", summary="新增 MCP 服务器")
-async def add_mcp_server(request: MCPServerCreate) -> Result[MCPServerConfigInfo]:
+async def post_mcp_server(body: MCPServerCreate, response: Response) -> Result[MCPServerConfigInfo]:
+    response.headers["Cache-Control"] = "no-store"
     try:
         server = await asyncio.to_thread(
-            create_mcp_server, request.name, request.model_dump(exclude={"name"})
+            create_mcp_server, body.name, body.model_dump(exclude={"name"}, exclude_unset=True)
         )
-    except MCPConfigManagementError as error:
-        raise _config_error(error) from error
+    except FileExistsError as error:
+        raise AppException(code=409, message="同名 MCP 服务器已存在", status_code=409) from error
+    except ValueError as error:
+        raise AppException(code=422, message="服务器配置无效，无法添加", status_code=422) from error
     return Result.success(server)
 
 
-# 修改 MCP 服务器
+# 修改服务器配置
 @router.patch("/servers/{name}", summary="修改 MCP 服务器")
-async def patch_mcp_server(name: str, request: MCPServerPatch) -> Result[MCPServerConfigInfo]:
-    changes = request.model_dump(exclude_unset=True)
+async def patch_mcp_server(
+    name: str, body: MCPServerPatch, response: Response
+) -> Result[MCPServerConfigInfo]:
+    response.headers["Cache-Control"] = "no-store"
+    changes = body.model_dump(exclude_unset=True)
     if not changes:
-        raise AppException(code=422, message="没有需要修改的字段", status_code=422)
+        raise AppException(code=422, message="请填写需要修改的配置", status_code=422)
     try:
         server = await asyncio.to_thread(update_mcp_server, name, changes)
-    except MCPConfigManagementError as error:
-        raise _config_error(error) from error
+    except LookupError as error:
+        raise AppException(code=404, message="指定的 MCP 服务器不存在", status_code=404) from error
+    except ValueError as error:
+        raise AppException(code=422, message="服务器配置无效，无法保存修改", status_code=422) from error
     return Result.success(server)
 
 
-# 启用或停用 MCP 服务器
+# 修改服务器启停状态
 @router.patch("/servers/{name}/enabled", summary="启用或停用 MCP 服务器")
-async def set_mcp_server_enabled(name: str, request: MCPServerEnabledPatch) -> Result[MCPServerConfigInfo]:
+async def patch_mcp_server_enabled(
+    name: str, body: MCPServerEnabledPatch, response: Response
+) -> Result[MCPServerConfigInfo]:
+    response.headers["Cache-Control"] = "no-store"
     try:
-        server = await asyncio.to_thread(update_mcp_server, name, {"enabled": request.enabled})
-    except MCPConfigManagementError as error:
-        raise _config_error(error) from error
+        server = await asyncio.to_thread(set_mcp_server_enabled, name, body.enabled)
+    except LookupError as error:
+        raise AppException(code=404, message="指定的 MCP 服务器不存在", status_code=404) from error
+    except ValueError as error:
+        raise AppException(code=422, message="服务器配置无效，无法切换启用状态", status_code=422) from error
     return Result.success(server)
 
 
-# 删除 MCP 服务器
+# 删除服务器配置
 @router.delete("/servers/{name}", summary="删除 MCP 服务器")
-async def remove_mcp_server(name: str) -> Result[None]:
+async def remove_mcp_server(name: str, response: Response) -> Result[None]:
+    response.headers["Cache-Control"] = "no-store"
     try:
         await asyncio.to_thread(delete_mcp_server, name)
-    except MCPConfigManagementError as error:
-        raise _config_error(error) from error
+    except LookupError as error:
+        raise AppException(code=404, message="指定的 MCP 服务器不存在", status_code=404) from error
+    except ValueError as error:
+        raise AppException(code=422, message="服务器配置格式不正确，无法删除", status_code=422) from error
     return Result.success(None, "删除成功")

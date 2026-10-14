@@ -1,6 +1,6 @@
 # 数据库表初始化
 
-from app.schemas.chat.slash import init_slash_commands
+from app.schemas.chat.slash_schema import init_slash_commands
 
 from harness.agents.memory.checkpointer import init_checkpointer
 from harness.config.app_config import get_app_config

@@ -47,7 +47,7 @@ def read_frontmatter(raw: str) -> str | None:
 
 
 # 解析单个技能包
-def read_skill(skill_dir: Path, source: str) -> Skill | None:
+def read_skill(skill_dir: Path, source: str, *, expected_name: str | None = None) -> Skill | None:
     config = get_app_config().skills
 
     if skill_dir.is_symlink() or skill_dir.is_junction():
@@ -98,7 +98,8 @@ def read_skill(skill_dir: Path, source: str) -> Skill | None:
         return None
     name = name.strip()
     description = description.strip()
-    if name != skill_dir.name:
+    directory_name = expected_name if expected_name is not None else skill_dir.name
+    if name != directory_name:
         logger.warning("技能 name 与目录名不一致，跳过", name=name, dir=skill_dir.name)
         return None
     if re.fullmatch(config.name_pattern, name) is None:

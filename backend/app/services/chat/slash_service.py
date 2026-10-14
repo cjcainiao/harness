@@ -3,7 +3,7 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 
-from app.schemas.chat.slash import SlashCommandItem
+from app.schemas.chat.slash_schema import SlashCommandItem
 from harness.config.app_config import get_app_config
 from harness.mcp.cache import get_mcp_status
 from harness.skills.loader import load_skills
