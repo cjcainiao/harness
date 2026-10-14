@@ -13,11 +13,12 @@ from app.schemas.chat.uploads_schema import UploadInfo
 from app.schemas.result import Result
 from app.services.chat.uploads_service import (
     INLINE_IMAGE_TYPES,
+    UploadNotFoundError,
     UploadStoreError,
+    UploadTooLargeError,
     delete_upload,
     get_upload,
-    save_upload,
-    upload_preview_url,
+    save_upload_info,
 )
 
 
@@ -26,7 +27,16 @@ router = APIRouter(prefix="/uploads", tags=["文件上传"])
 
 # 上传错误转换
 def _upload_error(error: UploadStoreError) -> AppException:
-    return AppException(code=error.status_code, message=str(error), status_code=error.status_code)
+    if isinstance(error, UploadNotFoundError):
+        status_code = 404
+        message = "附件不存在"
+    elif isinstance(error, UploadTooLargeError):
+        status_code = 413
+        message = "上传文件超过大小限制"
+    else:
+        status_code = 400
+        message = "上传文件无效"
+    return AppException(code=status_code, message=message, status_code=status_code)
 
 
 # 会话文件上传
@@ -36,23 +46,13 @@ async def create_upload(
     file: Annotated[UploadFile, File()],
 ) -> Result[UploadInfo]:
     try:
-        stored = await asyncio.to_thread(save_upload, thread_id, file.filename, file.file)
+        info = await asyncio.to_thread(save_upload_info, thread_id, file.filename, file.file)
     except UploadStoreError as error:
         raise _upload_error(error) from error
     finally:
         await file.close()
 
-    return Result.success(
-        UploadInfo(
-            file_id=stored.file_id,
-            thread_id=stored.thread_id,
-            name=stored.name,
-            size=stored.size,
-            mime_type=stored.mime_type,
-            created_at=stored.created_at,
-            preview_url=upload_preview_url(thread_id, stored.file_id),
-        )
-    )
+    return Result.success(info)
 
 
 # 附件预览与下载

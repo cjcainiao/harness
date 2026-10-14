@@ -12,10 +12,10 @@
         <span class="tagline-typed" aria-hidden="true">{{ shownText }}</span>
       </p>
       <div class="hero-actions">
-        <button class="hero-btn is-primary" type="button">
+        <RouterLink class="hero-btn is-primary" :to="{ name: 'chat-index' }">
           开始对话
           <span class="btn-arrow" aria-hidden="true">→</span>
-        </button>
+        </RouterLink>
         <button class="hero-btn is-secondary" type="button">查看文档</button>
         <button class="hero-btn is-outline" type="button">
           源码仓库

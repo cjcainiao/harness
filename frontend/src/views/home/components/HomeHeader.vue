@@ -199,6 +199,7 @@ function toggleTheme(): void {
   flex-shrink: 0;
   align-items: center;
   height: 40px;
+  border-bottom: 0;
   /* 末项内边距补偿 */
   margin-right: -10px;
 }
@@ -208,10 +209,15 @@ function toggleTheme(): void {
   align-items: center;
   height: 40px;
   padding: 0 10px;
+  border-bottom: 0;
   border-radius: 8px;
   cursor: pointer;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+}
+.header-menu :deep(.el-menu-item.is-active),
+.header-menu :deep(.el-menu-item:hover) {
+  border-bottom: 0;
 }
 /* 相邻菜单项间距 */
 .header-menu :deep(.el-menu-item + .el-menu-item) {

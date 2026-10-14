@@ -1,7 +1,8 @@
 # 斜杠菜单接口
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
+from app.exceptions import AppException
 from app.schemas.chat.slash_schema import SlashCommandItem
 from app.schemas.result import Result
 from app.services.chat.slash_service import list_slash_menu
@@ -18,5 +19,5 @@ async def get_slash_menu(
 ) -> Result[list[SlashCommandItem]]:
     items = await list_slash_menu(command, query)
     if items is None:
-        raise HTTPException(status_code=404, detail="命令不存在或未启用")
+        raise AppException(code=404, message="命令不存在或未启用", status_code=404)
     return Result.success(items)

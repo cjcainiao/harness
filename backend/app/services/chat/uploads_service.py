@@ -13,7 +13,9 @@ from pathlib import Path
 from typing import BinaryIO
 from urllib.parse import quote
 
+from app.schemas.chat.uploads_schema import UploadInfo
 from harness.agents.middlewares.thread_data import ensure_workspace_dir, workspace_path_for
+from harness.agents.thread_state import UploadedFileInfo
 from harness.config.app_config import get_app_config
 
 
@@ -38,9 +40,17 @@ CHUNK_SIZE = 1024 * 1024
 
 # 上传业务错误
 class UploadStoreError(ValueError):
-    def __init__(self, message: str, status_code: int = 400) -> None:
-        self.status_code = status_code
-        super().__init__(message)
+    pass
+
+
+# 附件不存在
+class UploadNotFoundError(UploadStoreError):
+    pass
+
+
+# 附件超过上限
+class UploadTooLargeError(UploadStoreError):
+    pass
 
 
 # 附件存储信息
@@ -53,6 +63,29 @@ class StoredUpload:
     mime_type: str
     created_at: str
     path: Path
+
+
+# 附件业务信息
+def uploaded_file_info(stored: StoredUpload) -> UploadedFileInfo:
+    return {
+        "file_id": stored.file_id,
+        "thread_id": stored.thread_id,
+        "name": stored.name,
+        "size": stored.size,
+        "mime_type": stored.mime_type,
+        "created_at": stored.created_at,
+        "preview_url": upload_preview_url(stored.thread_id, stored.file_id),
+    }
+
+
+# 附件接口信息
+def upload_info(stored: StoredUpload) -> UploadInfo:
+    return UploadInfo(**uploaded_file_info(stored))
+
+
+# 保存附件并生成接口信息
+def save_upload_info(thread_id: str, filename: str | None, source: BinaryIO) -> UploadInfo:
+    return upload_info(save_upload(thread_id, filename, source))
 
 
 # 附件预览地址
@@ -102,10 +135,10 @@ def _upload_root(thread_id: str, *, create: bool) -> Path:
 # 附件目录
 def _upload_dir(thread_id: str, file_id: str) -> Path:
     if len(file_id) != 32 or any(char not in "0123456789abcdef" for char in file_id):
-        raise UploadStoreError("附件不存在", 404)
+        raise UploadNotFoundError("附件不存在")
     directory = _upload_root(thread_id, create=False) / file_id
     if directory.is_symlink():
-        raise UploadStoreError("附件不存在", 404)
+        raise UploadNotFoundError("附件不存在")
     return directory
 
 
@@ -128,7 +161,7 @@ def save_upload(thread_id: str, filename: str | None, source: BinaryIO) -> Store
             while chunk := source.read(CHUNK_SIZE):
                 size += len(chunk)
                 if size > max_bytes:
-                    raise UploadStoreError(f"文件超过 {max_bytes} 字节上限", 413)
+                    raise UploadTooLargeError(f"文件超过 {max_bytes} 字节上限")
                 if not header:
                     header = chunk[:16]
                 target.write(chunk)
@@ -166,22 +199,22 @@ def get_upload(thread_id: str, file_id: str) -> StoredUpload:
     metadata_path = directory / "metadata.json"
     content_path = directory / "content"
     if metadata_path.is_symlink() or content_path.is_symlink():
-        raise UploadStoreError("附件不存在", 404)
+        raise UploadNotFoundError("附件不存在")
     try:
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
-        raise UploadStoreError("附件不存在", 404) from error
+        raise UploadNotFoundError("附件不存在") from error
     if (
         not isinstance(metadata, dict)
         or metadata.get("file_id") != file_id
         or metadata.get("thread_id") != thread_id
         or not content_path.is_file()
     ):
-        raise UploadStoreError("附件不存在", 404)
+        raise UploadNotFoundError("附件不存在")
     try:
         return StoredUpload(path=content_path, **metadata)
     except TypeError as error:
-        raise UploadStoreError("附件不存在", 404) from error
+        raise UploadNotFoundError("附件不存在") from error
 
 
 # 会话附件删除

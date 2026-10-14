@@ -49,6 +49,10 @@ import HomeFooter from './components/HomeFooter.vue'
   padding: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.home-main::-webkit-scrollbar {
+  display: none;
 }
 /* 页尾通栏，高度随内容 */
 .home-footer {

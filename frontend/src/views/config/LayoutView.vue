@@ -14,11 +14,13 @@
     >
       <router-view />
     </main>
+    <Settings />
   </div>
 </template>
 
 <script setup lang="ts">
 import ConfigNav from './components/ConfigNav.vue'
+import Settings from './components/Settings.vue'
 </script>
 
 <style scoped>

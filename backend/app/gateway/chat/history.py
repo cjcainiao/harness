@@ -2,15 +2,9 @@
 
 from fastapi import APIRouter, Path, Query
 
-from app.schemas.chat.history_schema import (
-    QuestionInfo,
-    ThreadInfo,
-    TurnInfo,
-    TurnItemInfo,
-    UsageInfo,
-)
+from app.schemas.chat.history_schema import ThreadInfo, TurnInfo
 from app.schemas.result import Result
-from harness.storage import history
+from app.services.chat.history_service import list_thread_summaries, list_thread_turns
 
 
 router = APIRouter(tags=["会话历史"])
@@ -36,8 +30,7 @@ async def get_threads(
         if before_created_at and before_thread_id
         else None
     )
-    threads = [ThreadInfo(**thread) for thread in await history.list_threads(limit, cursor)]
-    return Result.success(threads)
+    return Result.success(await list_thread_summaries(limit, cursor))
 
 
 # 会话内的历史轮次
@@ -47,21 +40,8 @@ async def get_thread_turns(
     limit: int = Query(default=20, ge=1, le=100, description="返回条数上限"),
     before_seq: int | None = Query(default=None, ge=1, description="游标序号，只取比它更早的轮次"),
 ) -> Result[list[TurnInfo]]:
-    if await history.get_thread(thread_id) is None:
-        return Result.error(code=404, message=f"会话不存在：{thread_id}")
-
-    turns = []
-    for row in await history.list_turns(thread_id, limit, before_seq):
-        turns.append(
-            TurnInfo(
-                turn_id=row["turn_id"],
-                thread_id=row["thread_id"],
-                seq=row["seq"],
-                question=QuestionInfo(**row["question"]),
-                status=row["status"],
-                created_at=row["created_at"],
-                items=[TurnItemInfo(**item) for item in row["items"]],
-                usage=UsageInfo(**row["usage"]) if row["usage"] else None,
-            )
-        )
+    try:
+        turns = await list_thread_turns(thread_id, limit, before_seq)
+    except LookupError:
+        return Result.error(code=404, message="会话不存在")
     return Result.success(turns)
