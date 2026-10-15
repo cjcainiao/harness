@@ -26,6 +26,7 @@
             class="swipe-action is-delete"
             type="button"
             :tabindex="revealedSessionId === item.id ? 0 : -1"
+            :disabled="chatSessions.isThreadBusy(item.id) || deletingRequestId === item.id"
             @click.stop="openDeleteDialog(item.id)"
           >
             <Trash2 :size="16" aria-hidden="true" />
@@ -102,6 +103,9 @@
           class="context-menu-item is-danger"
           role="menuitem"
           type="button"
+          :disabled="
+            chatSessions.isThreadBusy(contextMenu.id) || deletingRequestId === contextMenu.id
+          "
           @click="openDeleteDialog(contextMenu.id)"
         >
           <Trash2 :size="15" aria-hidden="true" />
@@ -118,6 +122,7 @@
       width="420px"
       :show-close="false"
       :close-on-click-modal="false"
+      :close-on-press-escape="!deletingRequestId"
       @closed="deletingSessionId = null"
     >
       <template #header="{ titleId, titleClass }">
@@ -128,10 +133,22 @@
       </template>
       <p class="delete-dialog-description">删除后，聊天记录将不可恢复。</p>
       <template #footer>
-        <button class="delete-dialog-cancel" type="button" @click="deleteDialogVisible = false">
+        <button
+          class="delete-dialog-cancel"
+          type="button"
+          :disabled="Boolean(deletingRequestId)"
+          @click="deleteDialogVisible = false"
+        >
           取消
         </button>
-        <button class="delete-dialog-confirm" type="button" @click="confirmDelete">删除</button>
+        <button
+          class="delete-dialog-confirm"
+          type="button"
+          :disabled="Boolean(deletingRequestId) || deleteBlocked"
+          @click="confirmDelete"
+        >
+          {{ deletingRequestId ? '删除中…' : '删除' }}
+        </button>
       </template>
     </ElDialog>
   </div>
@@ -142,7 +159,7 @@ import { ElDialog, ElMessage } from 'element-plus'
 import { MessageSquare, Pencil, Trash2 } from 'lucide-vue-next'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { updateThreadTitle } from '@/api/history'
+import { deleteThread, updateThreadTitle } from '@/api/history'
 import DotsMatrix from '@/components/DotsMatrix.vue'
 import { useChatSessionsStore } from '@/stores/chatSessions'
 import type { ChatSession } from '@/stores/chatSessions'
@@ -186,6 +203,10 @@ const contextMenuRef = ref<HTMLElement | null>(null)
 const contextMenu = ref<ContextMenuState | null>(null)
 const deleteDialogVisible = ref(false)
 const deletingSessionId = ref<string | null>(null)
+const deletingRequestId = ref<string | null>(null)
+const deleteBlocked = computed(
+  () => deletingSessionId.value !== null && chatSessions.isThreadBusy(deletingSessionId.value),
+)
 const editingSessionId = ref<string | null>(null)
 const draftTitle = ref('')
 const renamingSessionIds = new Set<string>()
@@ -269,17 +290,40 @@ function closeContextMenu(): void {
 // 删除确认弹窗
 function openDeleteDialog(threadId: string): void {
   const session = chatSessions.sessions.find((item) => item.id === threadId)
-  if (!session) return
+  if (!session || chatSessions.isThreadBusy(threadId) || deletingRequestId.value) return
   closeContextMenu()
   closeSwipeActions()
   deletingSessionId.value = session.id
   deleteDialogVisible.value = true
 }
 
-function confirmDelete(): void {
-  if (!deletingSessionId.value) return
+async function confirmDelete(): Promise<void> {
+  const threadId = deletingSessionId.value
+  if (!threadId || deletingRequestId.value || chatSessions.isThreadBusy(threadId)) return
+  deletingRequestId.value = threadId
+  try {
+    await deleteThread(threadId)
+  } catch (error: unknown) {
+    ElMessage({
+      type: 'error',
+      message: error instanceof Error ? error.message : '删除会话失败',
+      plain: true,
+    })
+    deletingRequestId.value = null
+    return
+  }
+
+  chatSessions.removeSession(threadId)
   deleteDialogVisible.value = false
-  ElMessage.info({ message: '当前无法删除会话', plain: true })
+  deletingRequestId.value = null
+  if (route.query.thread_id === threadId) {
+    const nextThreadId = chatSessions.getOrCreateEmptySession()
+    try {
+      await router.replace({ name: 'chat-index', query: { thread_id: nextThreadId } })
+    } catch {
+      ElMessage({ type: 'error', message: '会话已删除，页面切换失败', plain: true })
+    }
+  }
 }
 
 // 在会话原位置编辑标题
@@ -517,6 +561,10 @@ onUnmounted(() => {
 .swipe-action.is-delete {
   background: #e56565;
 }
+.swipe-action.is-delete:disabled {
+  background: #b8bec7;
+  cursor: not-allowed;
+}
 .history-item {
   position: relative;
   z-index: 1;
@@ -662,8 +710,12 @@ button.history-item:active {
 button.context-menu-item {
   cursor: pointer;
 }
+button.context-menu-item:disabled {
+  color: #a9adb3;
+  cursor: not-allowed;
+}
 @media (hover: hover) {
-  button.context-menu-item:hover {
+  button.context-menu-item:not(:disabled):hover {
     background: #f3f4f6;
   }
 }
@@ -675,7 +727,7 @@ button.context-menu-item:focus-visible {
   color: #d35b5b;
 }
 @media (hover: hover) {
-  button.context-menu-item.is-danger:hover {
+  button.context-menu-item.is-danger:not(:disabled):hover {
     background: #fff2f2;
   }
 }
@@ -749,11 +801,16 @@ button.context-menu-item:focus-visible {
   background: #ff3b38;
   color: #fff;
 }
+.delete-dialog-cancel:disabled,
+.delete-dialog-confirm:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 @media (hover: hover) {
-  .delete-dialog-cancel:hover {
+  .delete-dialog-cancel:not(:disabled):hover {
     background: #f7f7f7;
   }
-  .delete-dialog-confirm:hover {
+  .delete-dialog-confirm:not(:disabled):hover {
     border-color: #e83330;
     background: #e83330;
   }

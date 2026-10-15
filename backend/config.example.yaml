@@ -33,23 +33,23 @@ memory:
 
 # 上下文压缩配置
 summarization:                            # 上下文压缩配置
-  enabled: false                          # 是否启用上下文压缩
+  enabled: true                           # 是否启用上下文压缩
   model_name: deepseek-flash              # 摘要模型名称；null 表示使用本轮对话模型
   trigger:                                # 压缩触发条件，满足任意一项即触发
-    - type: fraction                      # 计量方式：tokens 令牌数 / messages 消息条数 / fraction 本轮对话模型上下文比例
-      value: 0.8                          # tokens/messages 使用大于 0 的整数；fraction 使用大于 0 且小于 1 的小数
+    - type: tokens                        # 计量方式：tokens 令牌数 / messages 消息条数 / fraction 本轮对话模型上下文比例
+      value: 70000                        # tokens/messages 使用大于 0 的整数；fraction 使用大于 0 且小于 1 的小数
   keep:                                   # 压缩后原样保留的最近消息范围
-    type: fraction                        # 计量方式：tokens 令牌数 / messages 消息条数 / fraction 本轮对话模型上下文比例
-    value: 0.2                            # tokens/messages 使用大于 0 的整数；fraction 使用大于 0 且小于 1 的小数
-  trim_tokens_to_summarize: 12000         # 单次传给摘要模型的历史令牌数上限；null 表示不限制
+    type: messages                        # 计量方式：tokens 令牌数 / messages 消息条数 / fraction 本轮对话模型上下文比例
+    value: 4                              # tokens/messages 使用大于 0 的整数；fraction 使用大于 0 且小于 1 的小数
+  trim_tokens_to_summarize: 60000         # 单次传给摘要模型的历史令牌数上限；null 表示不限制
 
 # 会话推荐配置
 recommendations:                          # 会话推荐配置
-  enabled: false                          # 是否启用会话追问推荐
+  enabled: true                          # 是否启用会话追问推荐
   model_name: deepseek-flash              # 推荐模型名称；null 表示使用本轮对话模型
   count: 3                                # 每轮推荐的问题数量，1 到 3 条
-  max_question_length: 120                # 每条推荐问题的最大字符数
-  recent_turns: 3                         # 参考的上一轮已完成对话数量；0 表示只看本轮
+  max_question_length: 10                # 每条推荐问题的最大字符数
+  recent_turns: 0                         # 参考的上一轮已完成对话数量；0 表示只看本轮
   max_input_tokens: 4000                  # 传给推荐模型的输入估算 Token 上限
   timeout_seconds: 8                      # 推荐模型调用超时时间（秒）
 

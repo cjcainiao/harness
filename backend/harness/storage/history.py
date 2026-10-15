@@ -91,6 +91,12 @@ FROM chat_thread
 WHERE id = ?
 """
 
+# 删除会话主记录
+SQL_DELETE_THREAD = "DELETE FROM chat_thread WHERE id = ?"
+
+# 删除会话的全部轮次
+SQL_DELETE_THREAD_TURNS = "DELETE FROM chat_turn WHERE thread_id = ?"
+
 # 修改会话标题与最后活动时间
 SQL_UPDATE_THREAD_TITLE = """
 UPDATE chat_thread
@@ -262,6 +268,27 @@ def update_thread_title(thread_id: str, title: str) -> dict[str, Any]:
                 raise LookupError(f"会话不存在：{thread_id}")
             row = conn.execute(SQL_SELECT_THREAD, (thread_id,)).fetchone()
         return dict(row)
+    finally:
+        conn.close()
+
+
+# 删除会话主记录，未找到时返回假
+def delete_thread_record(thread_id: str) -> bool:
+    conn = connect_history_db()
+    try:
+        with conn:
+            cursor = conn.execute(SQL_DELETE_THREAD, (thread_id,))
+            return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+# 删除会话轮次，不存在时不报错
+def delete_thread_turns(thread_id: str) -> None:
+    conn = connect_history_db()
+    try:
+        with conn:
+            conn.execute(SQL_DELETE_THREAD_TURNS, (thread_id,))
     finally:
         conn.close()
 

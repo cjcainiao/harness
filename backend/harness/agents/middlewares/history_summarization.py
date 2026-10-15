@@ -111,6 +111,15 @@ class HistorySummarizationMiddleware(AgentMiddleware[ThreadState]):
                     return True
         return False
 
+    # 最近一次当前模型用量
+    @staticmethod
+    def _last_reported_total_tokens(messages: Sequence[AnyMessage], model: ModelConfig) -> int | None:
+        message = next((item for item in reversed(messages) if isinstance(item, AIMessage)), None)
+        if message is None or message.response_metadata.get("model_name") != model.model_name:
+            return None
+        value = (message.usage_metadata or {}).get("total_tokens")
+        return value if type(value) is int and value > 0 else None
+
     # 工具调用与结果之间的安全边界
     @staticmethod
     def _safe_boundaries(messages: Sequence[AnyMessage]) -> list[int]:
@@ -476,17 +485,28 @@ class HistorySummarizationMiddleware(AgentMiddleware[ThreadState]):
         counted_messages = [*messages]
         if summary:
             counted_messages.append(SystemMessage(content=summary))
-        total_tokens = count_tokens_approximately(
+        estimated_tokens = count_tokens_approximately(
             counted_messages,
+            use_usage_metadata_scaling=True,
             tools=self._promoted_tools(promoted),
         )
+        reported_tokens = self._last_reported_total_tokens(messages, model)
+        trigger_tokens = max(estimated_tokens, reported_tokens or 0)
 
-        if not self._over_threshold(len(messages), total_tokens, model):
+        if not self._over_threshold(len(messages), trigger_tokens, model):
             return None
 
         partition = self._select_summary_messages(messages, summary, model)
         if partition is None:
             return None
+
+        logger.info(
+            "上下文压缩触发",
+            estimated_tokens=estimated_tokens,
+            reported_total_tokens=reported_tokens,
+            trigger_tokens=trigger_tokens,
+            message_count=len(messages),
+        )
 
         viewed_images = state.get("viewed_images")
         active_tools = self._active_tool_names(messages)
@@ -511,7 +531,7 @@ class HistorySummarizationMiddleware(AgentMiddleware[ThreadState]):
             updates = self._build_updates(result, partition[1], promoted, viewed_images)
             if self._app_config.system.debug:
                 try:
-                    self._log_compaction_debug(state, updates, result, total_tokens, model)
+                    self._log_compaction_debug(state, updates, result, estimated_tokens, model)
                 except Exception as error:
                     # 调试输出失败不影响压缩结果
                     logger.warning(

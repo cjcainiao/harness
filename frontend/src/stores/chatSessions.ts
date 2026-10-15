@@ -115,6 +115,8 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
   const loadedThreadIds = new Set<string>()
   // 只复用本地创建且尚未提问的会话
   const localSessionIds = new Set<string>()
+  // 防止删除前发出的列表请求把旧会话带回来
+  const deletedThreadIds = new Set<string>()
 
   function markUnread(id: string): void {
     unreadThreadIds.value.add(id)
@@ -156,6 +158,30 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     }
     sessions.value.unshift(session)
     return session
+  }
+
+  // 从本地移除已删除会话及其缓存
+  function removeSession(id: string): void {
+    deletedThreadIds.add(id)
+    sessions.value = sessions.value.filter((session) => session.id !== id)
+    delete turnsByThread.value[id]
+    delete turnsCursor.value[id]
+    delete turnsEnded.value[id]
+    delete turnsLoading.value[id]
+    delete streamTicks.value[id]
+    respondingThreadIds.value.delete(id)
+    unreadThreadIds.value.delete(id)
+    historyLoaded.delete(id)
+    loadedThreadIds.delete(id)
+    localSessionIds.delete(id)
+    if (viewingThreadId.value === id) viewingThreadId.value = null
+    if (pendingNotice.value?.threadId === id) pendingNotice.value = null
+    for (const [turnId, threadId] of turnThreads) {
+      if (threadId !== id) continue
+      turnThreads.delete(turnId)
+      runtimes.delete(turnId)
+      activeStreams.delete(turnId)
+    }
   }
 
   function createSession(): string {
@@ -242,9 +268,12 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     threadsLoading.value = true
     try {
       const page = await fetchThreads(THREAD_PAGE_SIZE)
-      rememberThreads(page)
-      const local = sessions.value.filter((item) => !loadedThreadIds.has(item.id))
-      sessions.value = [...local, ...page.map(toSession)]
+      const visiblePage = page.filter((thread) => !deletedThreadIds.has(thread.thread_id))
+      rememberThreads(visiblePage)
+      const local = sessions.value.filter(
+        (item) => !loadedThreadIds.has(item.id) && !deletedThreadIds.has(item.id),
+      )
+      sessions.value = [...local, ...visiblePage.map(toSession)]
       threadsCursor.value = nextCursor(page)
       threadsEnded.value = threadsCursor.value === null
     } catch {
@@ -261,9 +290,10 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     threadsLoading.value = true
     try {
       const page = await fetchThreads(THREAD_PAGE_SIZE, cursor)
-      rememberThreads(page)
+      const visiblePage = page.filter((thread) => !deletedThreadIds.has(thread.thread_id))
+      rememberThreads(visiblePage)
       const known = new Set(sessions.value.map((item) => item.id))
-      const added = page.map(toSession).filter((item) => !known.has(item.id))
+      const added = visiblePage.map(toSession).filter((item) => !known.has(item.id))
       sessions.value = [...sessions.value, ...added]
       threadsCursor.value = nextCursor(page)
       threadsEnded.value = threadsCursor.value === null
@@ -298,6 +328,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
   // 拉取会话首页历史并写入本地缓存，会话不存在时按空历史处理
   async function loadHistory(id: string): Promise<ChatTurn[]> {
     const page = await fetchThreadTurns(id, TURN_PAGE_SIZE)
+    if (deletedThreadIds.has(id)) return []
     markHistoryLoaded(id)
     // 本地已提问但服务端还没有的轮次接在历史后面，正在流式的不能丢
     const pending = getTurns(id).filter((turn) => !page?.some((item) => item.turn_id === turn.id))
@@ -318,6 +349,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     turnsLoading.value[id] = true
     try {
       const page = await fetchThreadTurns(id, TURN_PAGE_SIZE, cursor)
+      if (deletedThreadIds.has(id)) return []
       if (!page) {
         turnsEnded.value[id] = true
         return []
@@ -329,7 +361,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
       if (older.length) setTurns(id, [...older, ...cached])
       return older
     } finally {
-      turnsLoading.value[id] = false
+      if (!deletedThreadIds.has(id)) turnsLoading.value[id] = false
     }
   }
 
@@ -380,6 +412,16 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
   // 该会话是否还有未收尾的轮次
   function isThreadResponding(id: string): boolean {
     return getTurns(id).some((turn) => turn.status === 'streaming')
+  }
+
+  // 回答正文结束后推荐问题仍在流内，连接关闭前都不允许删除
+  function isThreadBusy(id: string): boolean {
+    void streamTick(id)
+    if (respondingThreadIds.value.has(id)) return true
+    for (const turnId of activeStreams.keys()) {
+      if (turnThreads.get(turnId) === id) return true
+    }
+    return false
   }
 
   function syncResponding(id: string): void {
@@ -926,6 +968,8 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
       if (!controller.signal.aborted) handleEvent({ type: 'error', message: '请求失败' }, turnId)
     } finally {
       activeStreams.delete(turnId)
+      const threadId = turnThreads.get(turnId) ?? request.thread_id
+      if (threadId) bumpTick(threadId)
     }
   }
 
@@ -965,10 +1009,12 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     createSession,
     getOrCreateEmptySession,
     ensureSession,
+    removeSession,
     setViewing,
     markUnread,
     clearUnread,
     isUnread,
+    isThreadBusy,
     titleFromMessage,
     loadThreads,
     loadMoreThreads,

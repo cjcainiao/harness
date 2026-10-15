@@ -1,5 +1,5 @@
 // history 页面模块接口
-import requestUtil, { type ApiResult } from '@/utils/requestUtil'
+import requestUtil, { RequestError, type ApiResult } from '@/utils/requestUtil'
 import type { UploadedFileInfo } from '@/api/uploads'
 
 /** 渲染段类型 */
@@ -120,6 +120,23 @@ export async function updateThreadTitle(threadId: string, title: string): Promis
     throw new Error(result.message || '修改会话标题失败')
   }
   return result.data
+}
+
+/** 删除会话；服务端已不存在时视为删除完成 */
+export async function deleteThread(threadId: string): Promise<void> {
+  try {
+    const result = await requestUtil.delete<ApiResult<null>>(
+      `/api/chat/threads/${encodeURIComponent(threadId)}`,
+    )
+    if (result.code !== 200 && !(result.code === 404 && result.message === '会话不存在')) {
+      throw new Error(result.message || '删除会话失败')
+    }
+  } catch (error) {
+    if (error instanceof RequestError && error.status === 404 && error.message === '会话不存在') {
+      return
+    }
+    throw error
+  }
 }
 
 /** 获取会话内的历史轮次，取最新一页，带游标则往前翻更早的一页；会话不存在时返回 null */
