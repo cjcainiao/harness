@@ -124,6 +124,7 @@ export function mapTurns(threadId: string, turns: TurnInfo[]): ChatTurn[] {
     createdAt: toTimestamp(turn.created_at),
     status: toTurnStatus(turn.status),
     items: turn.items.map(toTurnItem),
+    followUpQuestions: turn.follow_up_questions?.slice() ?? [],
     usage: toUsage(turn.usage),
   }))
 }

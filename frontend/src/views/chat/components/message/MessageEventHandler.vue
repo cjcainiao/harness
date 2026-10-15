@@ -180,13 +180,17 @@ function delegationParts(turnId: string, host: ToolItem): TurnItem[] | undefined
 
 const displayTurns = computed(() => {
   void chatSessions.streamTick(props.threadId)
+  // 新一轮开始后隐藏旧轮次的推荐
+  const latestTurnId = turns.value.at(-1)?.id
   return turns.value.map((turn) => ({
     ...turn,
     locatorId: locatorIdOf(turn.id),
     displayItems: groupItems(turn.items, (host) => delegationParts(turn.id, host)),
     lastItemId: turn.items[turn.items.length - 1]?.id ?? -1,
     visibleFollowUps:
-      turn.followUpQuestions?.map((question) => question.trim()).filter(Boolean) ?? [],
+      turn.id === latestTurnId
+        ? (turn.followUpQuestions?.map((question) => question.trim()).filter(Boolean) ?? [])
+        : [],
   }))
 })
 // 预览正文摘要，只取回复文字、不含代码块

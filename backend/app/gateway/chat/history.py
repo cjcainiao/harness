@@ -2,9 +2,14 @@
 
 from fastapi import APIRouter, Path, Query
 
-from app.schemas.chat.history_schema import ThreadInfo, TurnInfo
+from app.exceptions import AppException
+from app.schemas.chat.history_schema import ThreadInfo, ThreadTitlePatch, TurnInfo
 from app.schemas.result import Result
-from app.services.chat.history_service import list_thread_summaries, list_thread_turns
+from app.services.chat.history_service import (
+    list_thread_summaries,
+    list_thread_turns,
+    update_thread_title,
+)
 
 
 router = APIRouter(tags=["会话历史"])
@@ -45,3 +50,26 @@ async def get_thread_turns(
     except LookupError:
         return Result.error(code=404, message="会话不存在")
     return Result.success(turns)
+
+
+# 修改会话标题接口
+@router.patch("/threads/{thread_id}/title", summary="修改会话标题")
+async def patch_thread_title(
+    body: ThreadTitlePatch,
+    thread_id: str = Path(min_length=1, max_length=128, description="会话标识"),
+) -> Result[ThreadInfo]:
+    try:
+        thread = await update_thread_title(thread_id, body.title)
+    except LookupError as error:
+        raise AppException(code=404, message="会话不存在", status_code=404) from error
+    except ValueError as error:
+        raise AppException(code=422, message="会话标题无效", status_code=422) from error
+    return Result.success(thread)
+
+
+# 删除会话接口
+@router.delete("/threads/{thread_id}", summary="删除会话")
+async def delete_thread(
+    thread_id: str = Path(min_length=1, max_length=128, description="会话标识"),
+) -> Result[None]:
+    raise NotImplementedError

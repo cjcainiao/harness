@@ -48,6 +48,13 @@ class ThreadInfo(BaseModel):
     output_tokens: int = Field(description="会话累计输出 Token")
 
 
+# 修改会话标题请求
+class ThreadTitlePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=128, description="新的会话标题")
+
+
 # 提问正文与附件
 class QuestionInfo(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -67,4 +74,5 @@ class TurnInfo(BaseModel):
     status: str = Field(description="轮次状态，取值 streaming / completed / failed / interrupted")
     created_at: str = Field(description="提问时间，ISO-8601 UTC")
     items: list[TurnItemInfo] = Field(description="渲染段，顺序即显示顺序")
+    follow_up_questions: list[str] = Field(default_factory=list, description="本轮推荐的后续问题")
     usage: UsageInfo | None = Field(default=None, description="本轮累计用量")

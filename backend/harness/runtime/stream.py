@@ -20,6 +20,7 @@ from harness.core.logger import get_logger
 from harness.models.factory import ReasoningEffort
 from harness.mcp.cache import get_cached_mcp_discoveries
 from harness.runtime.events import parse_message_events
+from harness.runtime.recommendation import generate_recommendations
 from harness.storage import history
 from harness.storage.recorder import TurnRecorder
 
@@ -99,13 +100,15 @@ async def stream_agent(
     turn_id = _start_turn(thread_id, message, uploaded_files)
 
     # 覆盖轮次进度或收尾状态，写库失败不打断回复
-    def save(status: str) -> None:
+    def save(status: str) -> bool:
         if turn_id is None:
-            return
+            return False
         try:
             history.update_turn(turn_id, status, recorder.segments(), recorder.usage())
+            return True
         except sqlite3.Error as error:
             logger.warning("历史写入失败", turn_id=turn_id, error=str(error))
+            return False
 
     # 事件先攒段，到关键节点落库，断开时也能保住已有内容
     def track(event: dict[str, Any]) -> None:
@@ -115,10 +118,12 @@ async def stream_agent(
 
     # 只有代理完整跑完才算完成；取消或控制流中断保留为中断
     final_status = history.TURN_INTERRUPTED
+    answer_persisted = False
 
     try:
         app_config = get_app_config()
         mcp_discoveries = await get_cached_mcp_discoveries(app_config.mcp)
+        checkpointer = get_checkpointer()
         agent = create_lead_agent(
             model_name=model_name,
             thinking_enabled=thinking_enabled,
@@ -127,7 +132,7 @@ async def stream_agent(
             mcp_discoveries=mcp_discoveries,
             middleware=middleware,
             system_prompt=system_prompt,
-            checkpointer=get_checkpointer(),
+            checkpointer=checkpointer,
             app_config=app_config,
         )
 
@@ -176,6 +181,48 @@ async def stream_agent(
                 yield _encode_sse(event)
 
         final_status = history.TURN_COMPLETED
+        # 先关闭回答正文并保存完成状态
+        answer_complete = {"type": "answer_complete", "thread_id": thread_id}
+        recorder.feed(answer_complete)
+        answer_persisted = save(final_status)
+        yield _encode_sse(answer_complete)
+
+        # 推荐失败只影响推荐事件
+        try:
+            questions = await asyncio.wait_for(
+                generate_recommendations(
+                    agent=agent,
+                    run_config=run_config,
+                    checkpointer=checkpointer,
+                    thread_id=thread_id,
+                    turn_id=turn_id,
+                    question=message,
+                    items=recorder.segments(),
+                    app_config=app_config,
+                ),
+                timeout=app_config.recommendations.timeout_seconds,
+            )
+        except asyncio.CancelledError:
+            raise
+        except TimeoutError:
+            logger.warning(
+                "推荐生成超时",
+                thread_id=thread_id,
+                timeout_seconds=app_config.recommendations.timeout_seconds,
+            )
+            questions = []
+        except Exception as error:
+            logger.warning("推荐生成失败", thread_id=thread_id, error=str(error))
+            questions = []
+
+        if questions:
+            follow_up_event = {
+                "type": "follow_up_questions",
+                "thread_id": thread_id,
+                "questions": questions,
+            }
+            recorder.feed(follow_up_event)
+            yield _encode_sse(follow_up_event)
         yield _encode_sse({"type": "done", "thread_id": thread_id})
 
     except asyncio.CancelledError:
@@ -203,4 +250,5 @@ async def stream_agent(
     finally:
         # 补一次结束事件，定格没有闭合的推理段
         recorder.feed({"type": "done"})
-        save(final_status)
+        if not answer_persisted or final_status != history.TURN_COMPLETED:
+            save(final_status)

@@ -43,6 +43,13 @@ SET status = ?, items_json = ?, usage_json = ?
 WHERE id = ?
 """
 
+# 独立保存本轮推荐问题
+SQL_UPDATE_FOLLOW_UP_QUESTIONS = """
+UPDATE chat_turn
+SET follow_up_questions_json = ?
+WHERE id = ?
+"""
+
 # 启动时把上次进程遗留的未完成轮次标为中断
 SQL_INTERRUPT_UNFINISHED_TURNS = "UPDATE chat_turn SET status = ? WHERE status = ?"
 
@@ -84,9 +91,17 @@ FROM chat_thread
 WHERE id = ?
 """
 
+# 修改会话标题与最后活动时间
+SQL_UPDATE_THREAD_TITLE = """
+UPDATE chat_thread
+SET title = ?, updated_at = ?
+WHERE id = ?
+"""
+
 # 会话内轮次，取最近的一页
 SQL_SELECT_TURNS = """
-SELECT id AS turn_id, thread_id, seq, question, status, created_at, items_json, usage_json
+SELECT id AS turn_id, thread_id, seq, question, status, created_at,
+       items_json, follow_up_questions_json, usage_json
 FROM chat_turn
 WHERE thread_id = ?
 ORDER BY seq DESC
@@ -95,9 +110,19 @@ LIMIT ?
 
 # 往前翻一页更早的轮次
 SQL_SELECT_TURNS_BEFORE = """
-SELECT id AS turn_id, thread_id, seq, question, status, created_at, items_json, usage_json
+SELECT id AS turn_id, thread_id, seq, question, status, created_at,
+       items_json, follow_up_questions_json, usage_json
 FROM chat_turn
 WHERE thread_id = ? AND seq < ?
+ORDER BY seq DESC
+LIMIT ?
+"""
+
+# 推荐输入只读取当前会话最近已完成的轮次
+SQL_SELECT_RECENT_COMPLETED_TURNS = """
+SELECT question, items_json
+FROM chat_turn
+WHERE thread_id = ? AND status = ? AND (? IS NULL OR id != ?)
 ORDER BY seq DESC
 LIMIT ?
 """
@@ -217,6 +242,30 @@ def update_turn(
         conn.close()
 
 
+# 独立写入推荐问题，不覆盖回答正文和用量
+def save_follow_up_questions(turn_id: str, questions: list[str]) -> None:
+    conn = connect_history_db()
+    try:
+        with conn:
+            conn.execute(SQL_UPDATE_FOLLOW_UP_QUESTIONS, (_to_json(questions), turn_id))
+    finally:
+        conn.close()
+
+
+# 修改会话标题并返回更新后的会话
+def update_thread_title(thread_id: str, title: str) -> dict[str, Any]:
+    conn = connect_history_db()
+    try:
+        with conn:
+            cursor = conn.execute(SQL_UPDATE_THREAD_TITLE, (title, _utc_now(), thread_id))
+            if cursor.rowcount == 0:
+                raise LookupError(f"会话不存在：{thread_id}")
+            row = conn.execute(SQL_SELECT_THREAD, (thread_id,)).fetchone()
+        return dict(row)
+    finally:
+        conn.close()
+
+
 # 读会话列表
 async def list_threads(
     limit: int,
@@ -263,7 +312,31 @@ async def list_turns(
         # 历史 JSON 字段解析
         turn["question"] = _question_from_json(turn["question"])
         turn["items"] = json.loads(turn.pop("items_json"))
+        turn["follow_up_questions"] = json.loads(turn.pop("follow_up_questions_json"))
         usage_json = turn.pop("usage_json")
         turn["usage"] = json.loads(usage_json) if usage_json else None
         turns.append(turn)
     return turns
+
+
+# 读取当前会话最近已完成的旧问答，返回顺序从旧到新
+async def list_recent_completed_turns(
+    thread_id: str, limit: int, exclude_turn_id: str | None = None
+) -> list[dict[str, Any]]:
+    if limit <= 0:
+        return []
+
+    async with open_history_db() as conn:
+        async with conn.execute(
+            SQL_SELECT_RECENT_COMPLETED_TURNS,
+            (thread_id, TURN_COMPLETED, exclude_turn_id, exclude_turn_id, limit),
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+    return [
+        {
+            "question": _question_from_json(row["question"])["content"],
+            "items": json.loads(row["items_json"]),
+        }
+        for row in reversed(rows)
+    ]

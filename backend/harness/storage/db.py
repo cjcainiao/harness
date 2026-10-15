@@ -11,16 +11,13 @@ import aiosqlite
 
 from harness.config.app_config import get_app_config
 from harness.runtime.db_path import resolve_db_path
-from harness.storage.schema import SCHEMA_SCRIPT, THREAD_LATE_COLUMNS
+from harness.storage.schema import SCHEMA_SCRIPT
 
 
-# 每个连接都要设置的开关，外键约束出厂关闭需逐个开启
+# 每个连接都设置数据库等待时间
 def session_pragmas() -> tuple[str, ...]:
     timeout = get_app_config().system.db_busy_timeout_ms
-    return (
-        "PRAGMA foreign_keys = ON",
-        f"PRAGMA busy_timeout = {timeout}",
-    )
+    return (f"PRAGMA busy_timeout = {timeout}",)
 
 
 # 打开同步连接，写库用短事务
@@ -45,15 +42,6 @@ async def open_history_db(path: str | Path | None = None) -> AsyncIterator[aiosq
         await conn.close()
 
 
-# 老库缺列时补上，建表脚本对已存在的表不会加列
-async def _add_missing_columns(conn: aiosqlite.Connection) -> None:
-    async with conn.execute("PRAGMA table_info(chat_thread)") as cursor:
-        existing = {row[1] for row in await cursor.fetchall()}
-    for column, ddl in THREAD_LATE_COLUMNS.items():
-        if column not in existing:
-            await conn.execute(ddl)
-
-
 # 建目录并执行建表脚本，语句幂等
 async def init_history_db(path: str | Path | None = None) -> Path:
     db_path = resolve_db_path(path)
@@ -62,7 +50,6 @@ async def init_history_db(path: str | Path | None = None) -> Path:
     conn = await aiosqlite.connect(db_path)
     try:
         await conn.executescript(SCHEMA_SCRIPT)
-        await _add_missing_columns(conn)
         # WAL 是库级持久属性，重复设置无副作用
         await conn.execute("PRAGMA journal_mode = WAL")
         await conn.commit()

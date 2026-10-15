@@ -79,13 +79,22 @@
         @close="formOpen = false"
         @submit="saveServer"
       />
+      <DeleteConfirmDialog
+        :open="pendingDelete !== null"
+        :title="`删除 ${pendingDelete?.name ?? ''}？`"
+        description="删除后将无法在对话中使用这台服务器的工具。"
+        confirm-text="删除服务器"
+        :busy="isBusy"
+        @close="pendingDelete = null"
+        @confirm="confirmRemoveServer"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { PlugZap, Plus, RefreshCw } from 'lucide-vue-next'
 import {
   createMcpServer,
@@ -102,6 +111,7 @@ import {
 } from '@/api/mcp'
 import McpServerCard from '../components/McpServerCard.vue'
 import McpServerForm from '../components/McpServerForm.vue'
+import DeleteConfirmDialog from '../components/DeleteConfirmDialog.vue'
 import StackIllustration from '../components/StackIllustration.vue'
 
 const configs = ref<McpServerConfig[]>([])
@@ -112,6 +122,7 @@ const busyAction = ref<string | null>(null)
 const loadError = ref('')
 const formOpen = ref(false)
 const editingServer = ref<McpServerConfig | null>(null)
+const pendingDelete = ref<McpServerConfig | null>(null)
 
 const statusByName = computed(
   () => new Map((snapshot.value?.servers ?? []).map((server) => [server.name, server])),
@@ -241,21 +252,15 @@ async function toggleServer(config: McpServerConfig): Promise<void> {
 }
 
 // MCP 服务器删除
-async function removeServer(config: McpServerConfig): Promise<void> {
+function removeServer(config: McpServerConfig): void {
   if (isBusy.value) return
-  try {
-    await ElMessageBox.confirm(
-      `删除后将无法在对话中使用这台服务器的工具。`,
-      `删除 ${config.name}？`,
-      {
-        confirmButtonText: '删除服务器',
-        cancelButtonText: '取消',
-        confirmButtonClass: 'mcp-delete-confirm',
-      },
-    )
-  } catch {
-    return
-  }
+  pendingDelete.value = config
+}
+
+async function confirmRemoveServer(): Promise<void> {
+  const config = pendingDelete.value
+  if (!config || isBusy.value) return
+  pendingDelete.value = null
   busyAction.value = config.name
   try {
     await deleteMcpServer(config.name)
@@ -462,14 +467,6 @@ onMounted(() => void loadAll())
   background: #fbf4f1;
   color: #89594e;
   font-size: 12px;
-}
-:global(.mcp-delete-confirm.el-button) {
-  --el-button-bg-color: #171717;
-  --el-button-border-color: #171717;
-  --el-button-hover-bg-color: #333;
-  --el-button-hover-border-color: #333;
-  --el-button-active-bg-color: #000;
-  --el-button-active-border-color: #000;
 }
 @media (hover: hover) {
   .add-button:hover {

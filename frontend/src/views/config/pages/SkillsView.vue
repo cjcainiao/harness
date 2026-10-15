@@ -102,13 +102,22 @@
         @close="formOpen = false"
         @submit="addSkill"
       />
+      <DeleteConfirmDialog
+        :open="pendingDelete !== null"
+        :title="`删除 ${pendingDelete?.name ?? ''}？`"
+        description="删除后会移除技能包文件，无法撤销。"
+        confirm-text="删除技能包"
+        :busy="busy"
+        @close="pendingDelete = null"
+        @confirm="confirmRemoveSkill"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ElMessage, ElMessageBox, ElOption, ElSelect } from 'element-plus'
+import { ElMessage, ElOption, ElSelect } from 'element-plus'
 import { BookOpenCheck, Plus, Search } from 'lucide-vue-next'
 import {
   deleteSkill,
@@ -119,6 +128,7 @@ import {
 } from '@/api/skills'
 import SkillCard from '../components/SkillCard.vue'
 import SkillInstallForm from '../components/SkillInstallForm.vue'
+import DeleteConfirmDialog from '../components/DeleteConfirmDialog.vue'
 import StackIllustration from '../components/StackIllustration.vue'
 
 const skills = ref<SkillItem[]>([])
@@ -126,6 +136,7 @@ const loading = ref(true)
 const loadError = ref('')
 const busyAction = ref<string | null>(null)
 const formOpen = ref(false)
+const pendingDelete = ref<SkillItem | null>(null)
 const query = ref('')
 const sourceFilter = ref<'all' | SkillItem['source']>('all')
 
@@ -213,17 +224,15 @@ async function toggleSkill(skill: SkillItem): Promise<void> {
 }
 
 // 删除第三方技能
-async function removeSkill(skill: SkillItem): Promise<void> {
+function removeSkill(skill: SkillItem): void {
   if (busy.value || skill.source !== 'public') return
-  try {
-    await ElMessageBox.confirm('删除后会移除技能包文件，无法撤销。', `删除 ${skill.name}？`, {
-      confirmButtonText: '删除技能包',
-      cancelButtonText: '取消',
-      confirmButtonClass: 'skill-delete-confirm',
-    })
-  } catch {
-    return
-  }
+  pendingDelete.value = skill
+}
+
+async function confirmRemoveSkill(): Promise<void> {
+  const skill = pendingDelete.value
+  if (!skill || busy.value) return
+  pendingDelete.value = null
   busyAction.value = skill.name
   try {
     await deleteSkill(skill.name)
@@ -506,12 +515,6 @@ onMounted(() => void loadSkills())
   background: #fbf4f1;
   color: #89594e;
   font-size: 12px;
-}
-:global(.skill-delete-confirm.el-button) {
-  --el-button-bg-color: #171717;
-  --el-button-border-color: #171717;
-  --el-button-hover-bg-color: #333;
-  --el-button-hover-border-color: #333;
 }
 @media (hover: hover) {
   .source-filter :deep(.el-select__wrapper:not(.is-focused):hover) {

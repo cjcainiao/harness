@@ -836,7 +836,10 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     if (!isMessageEvent(value)) return false
     const turn = findTurn(turnId)
     const runtime = turn && runtimes.get(turn.id)
-    if (!turn || !runtime || turn.status !== 'streaming') return false
+    if (!turn || !runtime) return false
+    // 回复完成后，仍接收同一轮的推荐和最终结束事件
+    const afterAnswer = value.type === 'follow_up_questions' || value.type === 'done'
+    if (turn.status !== 'streaming' && !(turn.status === 'completed' && afterAnswer)) return false
 
     // 除推理片段本身，其他事件都表示上一段推理已经结束
     if (value.type !== 'reasoning_chunk') closeReasoning(turn, runtime)
@@ -876,9 +879,19 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
       case 'usage':
         handleUsage(turn, runtime, value)
         break
+      case 'follow_up_questions':
+        if (
+          !Array.isArray(value.questions) ||
+          !value.questions.every((item) => typeof item === 'string')
+        ) {
+          return false
+        }
+        setFollowUpQuestions(turn.id, value.questions)
+        break
+      case 'answer_complete':
       case 'done':
         closeMessageChunk(runtime)
-        handleDone(turn, runtime)
+        if (turn.status === 'streaming') handleDone(turn, runtime)
         break
       case 'interrupted':
         closeMessageChunk(runtime)

@@ -34,10 +34,11 @@
 - `config.yaml` 不入版本控制且含真实密钥，核对只按行读指定键，不整文件 diff、不打印密钥行
 
 ## 数据库
-- 历史与检查点共用 `system.db_path`（默认 `data/harness.db`），`journal_mode = WAL`；历史库每条连接由 `session_pragmas()` 统一开启 `foreign_keys` 与 `busy_timeout`
+- 历史与检查点共用 `system.db_path`（默认 `data/harness.db`），`journal_mode = WAL`；历史库每条连接由 `session_pragmas()` 统一设置 `busy_timeout`
 - 库文件的相对路径统一由 `harness/runtime/db_path.py:resolve_db_path` 按后端项目根展开，不受启动目录影响
 - 数据库启动入口在 `app/init_db.py`，集中初始化应用表 `chat_thread`、`chat_turn`、`slash_command` 和检查点表 `checkpoints`、`writes`
 - 历史表 DDL 唯一事实源在 `harness/storage/schema.py`，语句全部幂等，启动时执行一遍 `SCHEMA_SCRIPT`
+- 项目自建表不使用 SQL 外键（`REFERENCES`、`FOREIGN KEY`、`ON DELETE CASCADE`）；新增关联记录时由业务逻辑检查目标是否存在，删除时显式清理关联记录，需要原子完成的多表操作放在同一事务中
 - 斜杠命令表 DDL 与初始数据由 `app/schemas/chat/slash_schema.py:init_slash_commands` 初始化，`app/init_db.py` 在启动时调用
 - 不记版本号、不做迁移链（不用 `user_version`）；给已存在的表改列要自己补 DDL 或删库重建
 - 建表失败直接抛出让启动失败，不静默降级成"没有历史功能"

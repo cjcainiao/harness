@@ -13,16 +13,40 @@
           class="history-actions"
           :aria-hidden="revealedSessionId !== item.id && swipingSessionId !== item.id"
         >
-          <button class="swipe-action is-rename" type="button" disabled>
+          <button
+            class="swipe-action is-rename"
+            type="button"
+            :tabindex="revealedSessionId === item.id ? 0 : -1"
+            @click.stop="startRename(item.id, item.title)"
+          >
             <Pencil :size="16" aria-hidden="true" />
             <span>重命名</span>
           </button>
-          <button class="swipe-action is-delete" type="button" disabled>
+          <button
+            class="swipe-action is-delete"
+            type="button"
+            :tabindex="revealedSessionId === item.id ? 0 : -1"
+            @click.stop="openDeleteDialog(item.id)"
+          >
             <Trash2 :size="16" aria-hidden="true" />
             <span>删除</span>
           </button>
         </div>
+        <div v-if="editingSessionId === item.id" class="history-item is-editing">
+          <MessageSquare :size="14" aria-hidden="true" />
+          <input
+            v-model="draftTitle"
+            class="item-title-input"
+            type="text"
+            :aria-label="`重命名会话：${item.title}`"
+            maxlength="128"
+            @keydown.enter="onRenameEnter"
+            @keydown.esc="onRenameEscape"
+            @blur="finishRename"
+          />
+        </div>
         <button
+          v-else
           class="history-item"
           :class="{
             'is-active': route.query.thread_id === item.id,
@@ -65,23 +89,60 @@
         }"
         @contextmenu.prevent
       >
-        <div class="context-menu-item" role="menuitem" aria-disabled="true">
+        <button
+          class="context-menu-item"
+          role="menuitem"
+          type="button"
+          @click="startRename(contextMenu.id, contextMenu.title)"
+        >
           <Pencil :size="15" aria-hidden="true" />
           <span>重命名</span>
-        </div>
-        <div class="context-menu-item is-danger" role="menuitem" aria-disabled="true">
+        </button>
+        <button
+          class="context-menu-item is-danger"
+          role="menuitem"
+          type="button"
+          @click="openDeleteDialog(contextMenu.id)"
+        >
           <Trash2 :size="15" aria-hidden="true" />
           <span>删除会话</span>
-        </div>
+        </button>
       </div>
     </Teleport>
+    <ElDialog
+      v-model="deleteDialogVisible"
+      append-to-body
+      align-center
+      class="conversation-delete-dialog"
+      modal-class="conversation-delete-overlay"
+      width="420px"
+      :show-close="false"
+      :close-on-click-modal="false"
+      @closed="deletingSessionId = null"
+    >
+      <template #header="{ titleId, titleClass }">
+        <div class="delete-dialog-heading">
+          <span class="delete-warning-icon" aria-hidden="true">!</span>
+          <span :id="titleId" :class="titleClass">确定删除对话？</span>
+        </div>
+      </template>
+      <p class="delete-dialog-description">删除后，聊天记录将不可恢复。</p>
+      <template #footer>
+        <button class="delete-dialog-cancel" type="button" @click="deleteDialogVisible = false">
+          取消
+        </button>
+        <button class="delete-dialog-confirm" type="button" @click="confirmDelete">删除</button>
+      </template>
+    </ElDialog>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ElDialog, ElMessage } from 'element-plus'
 import { MessageSquare, Pencil, Trash2 } from 'lucide-vue-next'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { updateThreadTitle } from '@/api/history'
 import DotsMatrix from '@/components/DotsMatrix.vue'
 import { useChatSessionsStore } from '@/stores/chatSessions'
 import type { ChatSession } from '@/stores/chatSessions'
@@ -123,6 +184,11 @@ const chatSessions = useChatSessionsStore()
 const listRef = ref<HTMLElement | null>(null)
 const contextMenuRef = ref<HTMLElement | null>(null)
 const contextMenu = ref<ContextMenuState | null>(null)
+const deleteDialogVisible = ref(false)
+const deletingSessionId = ref<string | null>(null)
+const editingSessionId = ref<string | null>(null)
+const draftTitle = ref('')
+const renamingSessionIds = new Set<string>()
 const revealedSessionId = ref<string | null>(null)
 const swipingSessionId = ref<string | null>(null)
 const swipeOffset = ref(0)
@@ -198,6 +264,80 @@ function onRowPointerCancel(event: PointerEvent, id: string): void {
 
 function closeContextMenu(): void {
   contextMenu.value = null
+}
+
+// 删除确认弹窗
+function openDeleteDialog(threadId: string): void {
+  const session = chatSessions.sessions.find((item) => item.id === threadId)
+  if (!session) return
+  closeContextMenu()
+  closeSwipeActions()
+  deletingSessionId.value = session.id
+  deleteDialogVisible.value = true
+}
+
+function confirmDelete(): void {
+  if (!deletingSessionId.value) return
+  deleteDialogVisible.value = false
+  ElMessage.info({ message: '当前无法删除会话', plain: true })
+}
+
+// 在会话原位置编辑标题
+async function startRename(id: string, title: string): Promise<void> {
+  closeContextMenu()
+  closeSwipeActions()
+  if (renamingSessionIds.has(id)) return
+  editingSessionId.value = id
+  draftTitle.value = title
+  await nextTick()
+  if (editingSessionId.value !== id) return
+  const input = listRef.value?.querySelector<HTMLInputElement>('.item-title-input')
+  if (!input) return
+  input.focus()
+  input.setSelectionRange(input.value.length, input.value.length)
+}
+
+async function finishRename(): Promise<void> {
+  const threadId = editingSessionId.value
+  if (!threadId) return
+  const title = draftTitle.value.trim()
+  editingSessionId.value = null
+  draftTitle.value = ''
+  const session = chatSessions.sessions.find((item) => item.id === threadId)
+  if (!session || !title || title === session.title || renamingSessionIds.has(threadId)) return
+
+  renamingSessionIds.add(threadId)
+  try {
+    const updated = await updateThreadTitle(threadId, title)
+    const current = chatSessions.sessions.find((item) => item.id === threadId)
+    if (current) current.title = updated.title
+  } catch (error: unknown) {
+    ElMessage({
+      type: 'error',
+      message: error instanceof Error ? error.message : '修改会话标题失败',
+      plain: true,
+    })
+  } finally {
+    renamingSessionIds.delete(threadId)
+  }
+}
+
+function cancelRename(): void {
+  editingSessionId.value = null
+  draftTitle.value = ''
+}
+
+function onRenameEnter(event: KeyboardEvent): void {
+  if (event.isComposing) return
+  event.preventDefault()
+  void finishRename()
+}
+
+function onRenameEscape(event: KeyboardEvent): void {
+  if (event.isComposing) return
+  event.preventDefault()
+  event.stopPropagation()
+  cancelRename()
 }
 
 async function openContextMenu(event: MouseEvent, item: ChatSession): Promise<void> {
@@ -397,14 +537,18 @@ onUnmounted(() => {
 .history-item.is-dragging {
   transition: none;
 }
-.history-item:active {
+.history-item.is-editing {
+  cursor: text;
+  touch-action: auto;
+}
+button.history-item:active {
   background: #eceff3;
 }
 .history-item.is-active {
   background: #e9ebee;
 }
 @media (hover: hover) {
-  .history-item:hover {
+  button.history-item:hover {
     background: #eceff3;
   }
 }
@@ -416,12 +560,36 @@ onUnmounted(() => {
     min-height: 42px;
   }
 }
+.history-item > svg {
+  flex: none;
+}
 .item-title {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+.item-title-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 7px;
+  border: 1px solid #c8cdd2;
+  border-radius: 6px;
+  outline: none;
+  background: #fff;
+  color: #303133;
+  font: inherit;
+  line-height: 20px;
+}
+.item-title-input:focus {
+  border-color: #6f7680;
+  box-shadow: 0 0 0 2px rgb(35 40 48 / 8%);
+}
+@media (max-width: 600px) {
+  .item-title-input {
+    font-size: 16px;
+  }
 }
 .item-dots {
   margin-left: 2px;
@@ -480,14 +648,126 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 9px;
+  width: 100%;
   height: 38px;
   padding: 0 11px;
+  border: 0;
   border-radius: 8px;
+  background: transparent;
   color: #303133;
+  font: inherit;
   font-size: 13px;
+  text-align: left;
+}
+button.context-menu-item {
+  cursor: pointer;
+}
+@media (hover: hover) {
+  button.context-menu-item:hover {
+    background: #f3f4f6;
+  }
+}
+button.context-menu-item:focus-visible {
+  outline: 2px solid #909399;
+  outline-offset: -2px;
 }
 .context-menu-item.is-danger {
   color: #d35b5b;
+}
+@media (hover: hover) {
+  button.context-menu-item.is-danger:hover {
+    background: #fff2f2;
+  }
+}
+:global(.conversation-delete-overlay) {
+  background: rgb(0 0 0 / 22%);
+  backdrop-filter: blur(3px);
+}
+:global(.conversation-delete-dialog.el-dialog) {
+  --el-dialog-padding-primary: 0px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 16%);
+}
+.delete-dialog-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 24px 0;
+  color: #202020;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 20px;
+}
+.delete-warning-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f99a00;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+.delete-dialog-description {
+  margin: 10px 0 0;
+  padding: 0 24px 0 54px;
+  color: #383838;
+  font-size: 14px;
+  line-height: 20px;
+}
+:global(.conversation-delete-dialog .el-dialog__footer) {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 24px 24px 22px;
+}
+.delete-dialog-cancel,
+.delete-dialog-confirm {
+  min-width: 80px;
+  height: 38px;
+  padding: 0 15px;
+  border-radius: 9px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.delete-dialog-cancel {
+  border: 1px solid #e2e2e2;
+  background: #fff;
+  color: #242424;
+}
+.delete-dialog-confirm {
+  border: 1px solid #ff3b38;
+  background: #ff3b38;
+  color: #fff;
+}
+@media (hover: hover) {
+  .delete-dialog-cancel:hover {
+    background: #f7f7f7;
+  }
+  .delete-dialog-confirm:hover {
+    border-color: #e83330;
+    background: #e83330;
+  }
+}
+.delete-dialog-cancel:focus-visible,
+.delete-dialog-confirm:focus-visible {
+  outline: 2px solid #303030;
+  outline-offset: 2px;
+}
+@media (any-pointer: coarse) {
+  .delete-dialog-cancel,
+  .delete-dialog-confirm {
+    min-height: 40px;
+  }
 }
 @keyframes context-menu-appear {
   from {

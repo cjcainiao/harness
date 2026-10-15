@@ -1,5 +1,7 @@
 # 会话历史业务
 
+import asyncio
+
 from app.schemas.chat.history_schema import (
     QuestionInfo,
     ThreadInfo,
@@ -16,6 +18,15 @@ async def list_thread_summaries(
 ) -> list[ThreadInfo]:
     rows = await history.list_threads(limit, before)
     return [ThreadInfo(**row) for row in rows]
+
+
+# 修改会话标题
+async def update_thread_title(thread_id: str, title: str) -> ThreadInfo:
+    normalized = title.strip()
+    if not normalized:
+        raise ValueError("会话标题不能为空")
+    row = await asyncio.to_thread(history.update_thread_title, thread_id, normalized)
+    return ThreadInfo(**row)
 
 
 # 查询会话轮次
@@ -35,6 +46,7 @@ async def list_thread_turns(
             status=row["status"],
             created_at=row["created_at"],
             items=[TurnItemInfo(**item) for item in row["items"]],
+            follow_up_questions=row["follow_up_questions"],
             usage=UsageInfo(**row["usage"]) if row["usage"] else None,
         )
         for row in rows

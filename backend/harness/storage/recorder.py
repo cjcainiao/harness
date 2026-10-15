@@ -21,6 +21,8 @@ MESSAGE_CLOSING_TYPES = frozenset(
         "tool_result",
         "tool_error",
         "context_compaction",
+        "answer_complete",
+        "follow_up_questions",
         "done",
         "error",
     }
@@ -339,7 +341,7 @@ class TurnRecorder:
             self._handle_compaction(event)
             return
 
-        if event_type in {"done", "error"}:
+        if event_type in {"answer_complete", "done", "error"}:
             self._finish_compaction("skipped")
 
         if event_type == "reasoning_chunk":

@@ -43,6 +43,16 @@ summarization:                            # 上下文压缩配置
     value: 0.2                            # tokens/messages 使用大于 0 的整数；fraction 使用大于 0 且小于 1 的小数
   trim_tokens_to_summarize: 12000         # 单次传给摘要模型的历史令牌数上限；null 表示不限制
 
+# 会话推荐配置
+recommendations:                          # 会话推荐配置
+  enabled: false                          # 是否启用会话追问推荐
+  model_name: deepseek-flash              # 推荐模型名称；null 表示使用本轮对话模型
+  count: 3                                # 每轮推荐的问题数量，1 到 3 条
+  max_question_length: 120                # 每条推荐问题的最大字符数
+  recent_turns: 3                         # 参考的上一轮已完成对话数量；0 表示只看本轮
+  max_input_tokens: 4000                  # 传给推荐模型的输入估算 Token 上限
+  timeout_seconds: 8                      # 推荐模型调用超时时间（秒）
+
 # 模型配置，第一个为默认模型
 models:
   - model_name: deepseek-flash # 实际模型名称

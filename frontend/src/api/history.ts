@@ -86,6 +86,8 @@ export interface TurnInfo {
   created_at: string
   // 渲染段，顺序即显示顺序
   items: TurnItemInfo[]
+  // 本轮推荐的后续问题
+  follow_up_questions: string[]
   // 本轮累计用量
   usage: TurnUsageInfo | null
 }
@@ -104,6 +106,20 @@ export async function fetchThreads(limit = 50, cursor?: ThreadCursor): Promise<T
     throw new Error(result.message || '获取会话列表失败')
   }
   return result.data ?? []
+}
+
+/** 修改会话标题，返回更新后的会话信息 */
+export async function updateThreadTitle(threadId: string, title: string): Promise<ThreadInfo> {
+  const result = await requestUtil.request<ApiResult<ThreadInfo>, { title: string }>({
+    method: 'PATCH',
+    url: `/api/chat/threads/${encodeURIComponent(threadId)}/title`,
+    data: { title },
+  })
+
+  if (result.code !== 200 || !result.data) {
+    throw new Error(result.message || '修改会话标题失败')
+  }
+  return result.data
 }
 
 /** 获取会话内的历史轮次，取最新一页，带游标则往前翻更早的一页；会话不存在时返回 null */

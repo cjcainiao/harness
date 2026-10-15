@@ -103,13 +103,22 @@
         @close="formOpen = false"
         @submit="saveModel"
       />
+      <DeleteConfirmDialog
+        :open="pendingDelete !== null"
+        :title="`删除 ${pendingDelete?.display_name ?? ''}？`"
+        :description="deleteDescription"
+        confirm-text="删除模型"
+        :busy="busy"
+        @close="pendingDelete = null"
+        @confirm="confirmRemoveModel"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ElMessage, ElMessageBox, ElOption, ElSelect } from 'element-plus'
+import { ElMessage, ElOption, ElSelect } from 'element-plus'
 import { BrainCircuit, Plus, Search } from 'lucide-vue-next'
 import {
   createModelConfig,
@@ -123,6 +132,7 @@ import {
 } from '@/api/modelConfig'
 import ModelConfigCard from '../components/ModelConfigCard.vue'
 import ModelConfigForm from '../components/ModelConfigForm.vue'
+import DeleteConfirmDialog from '../components/DeleteConfirmDialog.vue'
 import StackIllustration from '../components/StackIllustration.vue'
 
 const models = ref<ModelConfigItem[]>([])
@@ -131,6 +141,7 @@ const loadError = ref('')
 const busyAction = ref<string | null>(null)
 const formOpen = ref(false)
 const editingModel = ref<ModelConfigItem | null>(null)
+const pendingDelete = ref<ModelConfigItem | null>(null)
 const query = ref('')
 const ALL_PROVIDERS = '__all__'
 const providerFilter = ref(ALL_PROVIDERS)
@@ -140,6 +151,19 @@ const showEmptyState = computed(
   () => !loading.value && !loadError.value && models.value.length === 0,
 )
 const providerOptions = computed(() => [...new Set(models.value.map((model) => model.provider))])
+const deleteDescription = computed(() => {
+  const model = pendingDelete.value
+  if (!model) return ''
+  if (!isPersistedModelConfig(model.model_name)) {
+    return '这个模型尚未保存，仅从当前预览列表中移除。'
+  }
+  if (models.value[0]?.model_name !== model.model_name) {
+    return '删除后，这个模型将从后端配置中移除。'
+  }
+  return models.value.length > 1
+    ? '删除默认模型后，配置列表中的下一项将成为默认模型。'
+    : '删除后将没有默认模型，需要添加模型才能继续使用对话。'
+})
 // 模型搜索与厂商筛选
 const filteredModels = computed(() => {
   const keyword = query.value.toLowerCase()
@@ -235,28 +259,15 @@ async function makeDefault(model: ModelConfigItem): Promise<void> {
 }
 
 // 模型删除
-async function removeModel(model: ModelConfigItem): Promise<void> {
+function removeModel(model: ModelConfigItem): void {
   if (busy.value) return
-  const persisted = isPersistedModelConfig(model.model_name)
-  try {
-    await ElMessageBox.confirm(
-      persisted
-        ? models.value[0]?.model_name === model.model_name
-          ? models.value.length > 1
-            ? '删除默认模型后，配置列表中的下一项将成为默认模型。'
-            : '删除后将没有默认模型，需要添加模型才能继续使用对话。'
-          : '删除后，这个模型将从后端配置中移除。'
-        : '这个模型尚未保存，仅从当前预览列表中移除。',
-      `删除 ${model.display_name}？`,
-      {
-        confirmButtonText: '删除模型',
-        cancelButtonText: '取消',
-        confirmButtonClass: 'model-delete-confirm',
-      },
-    )
-  } catch {
-    return
-  }
+  pendingDelete.value = model
+}
+
+async function confirmRemoveModel(): Promise<void> {
+  const model = pendingDelete.value
+  if (!model || busy.value) return
+  pendingDelete.value = null
   busyAction.value = model.model_name
   try {
     const deletedFromBackend = await deleteModelConfig(model.model_name)
@@ -541,12 +552,6 @@ onMounted(() => void loadModels())
     background: none;
     color: #444;
   }
-}
-:global(.model-delete-confirm.el-button) {
-  --el-button-bg-color: #171717;
-  --el-button-border-color: #171717;
-  --el-button-hover-bg-color: #333;
-  --el-button-hover-border-color: #333;
 }
 @media (hover: hover) {
   .provider-filter :deep(.el-select__wrapper:not(.is-focused):hover) {

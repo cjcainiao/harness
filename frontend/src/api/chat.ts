@@ -164,6 +164,22 @@ export interface DoneEvent extends ChatStreamEventBase {
   thread_id?: string
 }
 
+/** 回复正文完成，推荐问题仍可能继续到达 */
+export interface AnswerCompleteEvent extends ChatStreamEventBase {
+  type: 'answer_complete'
+  // 服务端回传的会话标识
+  thread_id?: string
+}
+
+/** 本轮推荐的后续问题 */
+export interface FollowUpQuestionsEvent extends ChatStreamEventBase {
+  type: 'follow_up_questions'
+  // 服务端回传的会话标识
+  thread_id?: string
+  // 可直接点击提问的问题
+  questions: string[]
+}
+
 /** 流内错误 */
 export interface ErrorEvent extends ChatStreamEventBase {
   type: 'error'
@@ -190,6 +206,8 @@ export type ChatStreamEvent =
   | SubagentEvent
   | ContextCompactionEvent
   | UsageEvent
+  | AnswerCompleteEvent
+  | FollowUpQuestionsEvent
   | DoneEvent
   | ErrorEvent
   | CustomStreamEvent
@@ -217,6 +235,8 @@ const CHAT_STREAM_EVENT_TYPES = [
   'subagent',
   'context_compaction',
   'usage',
+  'answer_complete',
+  'follow_up_questions',
   'done',
   'error',
   'custom',
