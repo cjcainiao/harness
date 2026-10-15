@@ -6,6 +6,7 @@ from langchain.agents.middleware import AgentMiddleware
 
 from harness.agents.middlewares.attachments import AttachmentMiddleware
 from harness.agents.middlewares.deferred_tool_filter import DeferredToolFilterMiddleware
+from harness.agents.middlewares.history_summarization import HistorySummarizationMiddleware
 from harness.agents.middlewares.model_debug import ModelDebugMiddleware
 from harness.agents.middlewares.skill_activation import SkillActivationMiddleware
 from harness.agents.middlewares.thread_data import ThreadDataMiddleware
@@ -19,7 +20,7 @@ from harness.tools.system.tool_search import ToolCatalog
 def build_agent_middleware(
     middleware: Sequence[AgentMiddleware] | None = None,
     *,
-    catalog: ToolCatalog | None = None,
+    catalog: ToolCatalog,
     app_config: AppConfig | None = None,
 ) -> list[AgentMiddleware]:
     config = app_config or get_app_config()
@@ -33,8 +34,12 @@ def build_agent_middleware(
         ViewImageMiddleware(),
     ]
 
+    # 上下文压缩
+    if config.summarization.enabled:
+        items.append(HistorySummarizationMiddleware(config, catalog))
+
     # 懒加载工具过滤
-    if catalog is not None and catalog.entries:
+    if catalog.entries:
         items.append(
             DeferredToolFilterMiddleware(
                 frozenset(entry.name for entry in catalog.entries), catalog.fingerprint

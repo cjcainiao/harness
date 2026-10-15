@@ -20,6 +20,7 @@ MESSAGE_CLOSING_TYPES = frozenset(
         "tool_start",
         "tool_result",
         "tool_error",
+        "context_compaction",
         "done",
         "error",
     }
@@ -42,6 +43,7 @@ class TurnRecorder:
         self._reasoning_start: float | None = None
         self._tool_by_call_id: dict[str, int] = {}
         self._tool_by_index: dict[int, int] = {}
+        self._active_compaction: tuple[int, float] | None = None
 
     # 攒段结果，顺序即显示顺序
     def segments(self) -> list[dict[str, Any]]:
@@ -282,6 +284,33 @@ class TurnRecorder:
             usage[total_key] = (total or 0) + (counted[total_key] or 0)
         self._usage = usage
 
+    # 完成当前压缩段
+    def _finish_compaction(self, status: str, duration: Any = None) -> None:
+        active = self._active_compaction
+        if active is None:
+            return
+        index, started_at = active
+        segment = self._segments[index]
+        segment["status"] = status
+        segment["duration_ms"] = (
+            round(duration)
+            if isinstance(duration, (int, float)) and not isinstance(duration, bool)
+            else round((time.monotonic() - started_at) * 1000)
+        )
+        self._active_compaction = None
+
+    # 记录上下文压缩进度
+    def _handle_compaction(self, event: dict[str, Any]) -> None:
+        sub_type = event.get("sub_type")
+        if sub_type == "start":
+            self._finish_compaction("skipped")
+            index = len(self._segments)
+            self._segments.append({"kind": "compaction", "status": "running", "duration_ms": None})
+            self._active_compaction = (index, time.monotonic())
+        elif sub_type in {"finish", "skip", "error"}:
+            status = {"finish": "success", "skip": "skipped", "error": "error"}[sub_type]
+            self._finish_compaction(status, event.get("duration_ms"))
+
     # 吃一个事件，按类型写入对应的段
     def feed(self, event: dict[str, Any]) -> None:
         event_type = event.get("type")
@@ -305,6 +334,13 @@ class TurnRecorder:
         if event_type == "subagent":
             self._handle_subagent(event)
             return
+
+        if event_type == "context_compaction":
+            self._handle_compaction(event)
+            return
+
+        if event_type in {"done", "error"}:
+            self._finish_compaction("skipped")
 
         if event_type == "reasoning_chunk":
             content = event.get("content")

@@ -16,11 +16,41 @@
 
     <div v-if="open" ref="body" class="delegation-body">
       <div v-for="item in parts" :key="item.id" class="delegation-item">
-        <MessageChunk
+        <details
           v-if="item.type === 'message_chunk'"
-          :content="item.content"
-          :streaming="isRunning && item.id === lastPartId"
-        />
+          class="delegation-response"
+          :open="expandedResponses.has(item.id)"
+          @toggle.stop="onResponseToggle(item.id, $event)"
+        >
+          <summary class="delegation-response-header">
+            <LoaderCircle
+              v-if="isRunning && item.id === lastPartId"
+              class="delegation-response-status is-running"
+              :size="13"
+              aria-hidden="true"
+            />
+            <CircleCheck
+              v-else
+              class="delegation-response-status is-complete"
+              :size="13"
+              aria-hidden="true"
+            />
+            <span class="delegation-response-title">子代理回复</span>
+            <span class="delegation-response-state">{{
+              isRunning && item.id === lastPartId ? '生成中' : '已完成'
+            }}</span>
+            <span v-if="responsePreview(item.content)" class="delegation-response-preview">
+              · {{ responsePreview(item.content) }}
+            </span>
+            <ChevronDown class="delegation-response-chevron" :size="15" aria-hidden="true" />
+          </summary>
+          <div v-if="expandedResponses.has(item.id)" class="delegation-response-content">
+            <MessageChunk
+              :content="item.content"
+              :streaming="isRunning && item.id === lastPartId"
+            />
+          </div>
+        </details>
         <MessageReasoning
           v-else-if="item.type === 'reasoning'"
           :content="item.content"
@@ -31,6 +61,7 @@
           hide-chevron
         />
         <ToolCallItem v-else-if="item.type === 'tool'" :tool="item" />
+        <ContextCompactionMessage v-else-if="item.type === 'compaction'" :item="item" />
         <MessageError v-else-if="item.type === 'error'" :content="item.content" />
       </div>
     </div>
@@ -38,9 +69,11 @@
 </template>
 
 <script setup lang="ts">
+import { ChevronDown, CircleCheck, LoaderCircle } from 'lucide-vue-next'
 import { computed, nextTick, ref, watch } from 'vue'
 import ShimmerText from '@/components/ShimmerText.vue'
 import { formatDuration, useLiveTimer } from '@/utils/turnTimerUtil'
+import ContextCompactionMessage from './ContextCompactionMessage.vue'
 import MessageChunk from './MessageChunk.vue'
 import MessageError from './MessageError.vue'
 import MessageReasoning from './MessageReasoning.vue'
@@ -59,10 +92,27 @@ const lastPartId = computed(() => props.parts[props.parts.length - 1]?.id ?? -1)
 
 // 卡片默认收起，只有点击才开
 const open = ref(false)
+const expandedResponses = ref(new Set<number>())
 
 // 浏览器开合 details 时同步状态，收起时不给子项建 DOM
 function onToggle(event: Event): void {
   open.value = (event.target as HTMLDetailsElement).open
+}
+
+// 只在展开时渲染正文
+function onResponseToggle(id: number, event: Event): void {
+  if ((event.target as HTMLDetailsElement).open) {
+    expandedResponses.value.add(id)
+    if (isRunning.value) void scrollBody(true)
+  } else {
+    expandedResponses.value.delete(id)
+  }
+}
+
+// 正文首行预览
+function responsePreview(content: string): string {
+  const firstLine = content.match(/[^\r\n]+/)?.[0] ?? ''
+  return firstLine.replace(/^\s*#{1,6}\s+/, '').trim()
 }
 
 // 宿主那次 task 调用没收尾就算委派还在进行
@@ -85,6 +135,7 @@ const bodySignature = computed(() =>
 
 function textLength(part: TurnItem): number {
   if (part.type === 'tool') return typeof part.arguments === 'string' ? part.arguments.length : 0
+  if (part.type === 'compaction') return 0
   return part.content.length
 }
 
@@ -278,6 +329,98 @@ const timerText = computed(() => {
 
 .delegation-item {
   min-width: 0;
+}
+
+.delegation-response {
+  min-width: 0;
+}
+
+.delegation-response-header {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+  min-height: 20px;
+  color: #8b8b8b;
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+  list-style: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.delegation-response-header::-webkit-details-marker {
+  display: none;
+}
+
+.delegation-response-status,
+.delegation-response-title,
+.delegation-response-state {
+  flex: none;
+}
+
+.delegation-response-status.is-complete {
+  color: #43a66d;
+}
+
+.delegation-response-status.is-running {
+  color: #628fbd;
+  animation: delegation-response-spin 1.4s linear infinite;
+}
+
+.delegation-response-preview {
+  min-width: 0;
+  overflow: hidden;
+  color: #aaa;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.delegation-response-chevron {
+  flex: none;
+  margin-left: auto;
+  color: #9299a0;
+  transition: transform 0.18s ease;
+}
+
+.delegation-response[open] .delegation-response-chevron {
+  transform: rotate(180deg);
+}
+
+.delegation-response-content {
+  min-width: 0;
+  margin: 5px 0 4px 19px;
+  padding: 10px 12px;
+  border-radius: 5px;
+  background: #f5f6f7;
+  color: #34393d;
+}
+
+.delegation-response-header:focus-visible {
+  outline: 2px solid #8b9fc7;
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+@keyframes delegation-response-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (any-pointer: coarse) {
+  .delegation-response-header {
+    min-height: 36px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .delegation-response-chevron,
+  .delegation-response-status.is-running {
+    animation: none;
+    transition: none;
+  }
 }
 
 .delegation-timer {

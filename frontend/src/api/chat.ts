@@ -141,6 +141,15 @@ export interface SubagentEvent extends ChatStreamEventBase {
   duration_ms?: number
 }
 
+/** 上下文压缩进度 */
+export interface ContextCompactionEvent extends ChatStreamEventBase {
+  type: 'context_compaction'
+  // 开始、完成、跳过或报错
+  sub_type: 'start' | 'finish' | 'skip' | 'error'
+  // 结束事件的耗时
+  duration_ms?: number
+}
+
 /** 令牌用量 */
 export interface UsageEvent extends ChatStreamEventBase {
   type: 'usage'
@@ -179,6 +188,7 @@ export type ChatStreamEvent =
   | ToolResultEvent
   | ToolErrorEvent
   | SubagentEvent
+  | ContextCompactionEvent
   | UsageEvent
   | DoneEvent
   | ErrorEvent
@@ -205,6 +215,7 @@ const CHAT_STREAM_EVENT_TYPES = [
   'tool_result',
   'tool_error',
   'subagent',
+  'context_compaction',
   'usage',
   'done',
   'error',

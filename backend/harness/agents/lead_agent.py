@@ -60,13 +60,12 @@ def create_lead_agent(
 
     # 懒加载工具注册
     search_enabled = "tool_search" in bound_tools
-    catalog: ToolCatalog | None = None
+    catalog: ToolCatalog = build_registry() if search_enabled else make_catalog(())
     if search_enabled:
-        catalog = build_registry()
         bound_tools.update((entry.name, entry.tool) for entry in catalog.entries)
 
     bound_tools.update((tool.name, tool) for tool in tools or ())
-    if catalog is not None:
+    if search_enabled:
         # MCP 工具目录合并
         mcp_entries = build_mcp_entries(
             mcp_discoveries or {},
@@ -79,7 +78,7 @@ def create_lead_agent(
     # 系统提示词渲染
     prompt = render_lead_agent_prompt(
         role=system_prompt,
-        deferred_tools=deferred_tools_section(catalog) if catalog is not None else "",
+        deferred_tools=deferred_tools_section(catalog),
         skills=skills_section(load_skills(), describe_skill_enabled="describe_skill" in bound_tools),
         subagents=subagents_section(load_subagent_configs()),
     )

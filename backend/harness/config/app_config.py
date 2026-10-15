@@ -15,6 +15,7 @@ from harness.config.mcp_config import MCPConfig
 from harness.config.model_config import ModelConfig
 from harness.config.skills_config import skillsConfig
 from harness.config.subagents_config import subagentsConfig
+from harness.config.summarization_config import SummarizationConfig
 from harness.config.system_config import systemConfig
 from harness.config.tool_config import ToolConfig
 
@@ -31,6 +32,7 @@ _MCP_ENV_REFERENCE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 class AppConfig(ToolConfig):
     system: systemConfig = Field(default_factory=systemConfig, description="系统配置")
     memory: memoryConfig = Field(default_factory=memoryConfig, description="记忆配置")
+    summarization: SummarizationConfig = Field(default_factory=SummarizationConfig, description="上下文压缩配置")
     models: list[ModelConfig] = Field(default_factory=list, description="模型配置")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP 配置")
     skills: skillsConfig = Field(default_factory=skillsConfig, description="技能配置")

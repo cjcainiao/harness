@@ -11,13 +11,13 @@ from app.schemas.chat.uploads_schema import UploadInfo
 class TurnItemInfo(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    kind: str = Field(description="段类型，取值 message / reasoning / tool / error")
+    kind: str = Field(description="段类型，取值 message / reasoning / tool / compaction / error")
     content: str | None = Field(default=None, description="正文、推理或失败提示文本")
     duration_ms: int | None = Field(default=None, description="本段耗时，单位毫秒")
     tool: str | None = Field(default=None, description="工具名称")
     tool_call_id: str | None = Field(default=None, description="工具调用标识")
     status: str | None = Field(
-        default=None, description="工具状态，取值 preparing / running / success / error"
+        default=None, description="工具或压缩状态，取值 preparing / running / success / skipped / error"
     )
     arguments: dict[str, Any] | str | None = Field(default=None, description="工具入参")
     output: Any = Field(default=None, description="工具返回内容")

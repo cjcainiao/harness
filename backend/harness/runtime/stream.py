@@ -28,7 +28,7 @@ logger = get_logger(__name__)
 
 
 # 触发进度落库的事件类型
-MILESTONE_TYPES = frozenset({"usage", "tool_result", "tool_error"})
+MILESTONE_TYPES = frozenset({"usage", "tool_result", "tool_error", "context_compaction"})
 
 
 # 转换JSON默认值
@@ -93,7 +93,7 @@ async def stream_agent(
 ) -> AsyncIterator[str]:
     # 会话标识缺失时由服务端生成，历史才有归属
     thread_id = thread_id or uuid.uuid4().hex
-    run_config = {"configurable": {"thread_id": thread_id}}
+    run_config = {"configurable": {"thread_id": thread_id, "model_name": model_name}}
 
     recorder = TurnRecorder()
     turn_id = _start_turn(thread_id, message, uploaded_files)
@@ -149,6 +149,14 @@ async def stream_agent(
 
             if stream_type == "messages":
                 message_chunk, metadata = data
+                if metadata and metadata.get("lc_source") == "summarization":
+                    # 摘要正文只供中间件使用，用量仍计入本轮
+                    for payload in parse_message_events(message_chunk):
+                        if payload.get("type") == "usage":
+                            event = _with_source(payload, metadata, namespace)
+                            track(event)
+                            yield _encode_sse(event)
+                    continue
                 for payload in parse_message_events(message_chunk):
                     event = _with_source(payload, metadata, namespace)
                     track(event)

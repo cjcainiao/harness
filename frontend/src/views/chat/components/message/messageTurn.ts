@@ -1,7 +1,7 @@
 export type TurnStatus = 'streaming' | 'completed' | 'failed' | 'interrupted'
 export type TurnFeedback = 'up' | 'down'
 /** 输入区提示用的流式阶段 */
-export type StreamPhase = 'idle' | 'waiting' | 'tool' | 'streaming'
+export type StreamPhase = 'idle' | 'waiting' | 'tool' | 'streaming' | 'compacting'
 
 /** 输入区提示，委派进行中要带上是谁在干活、干到哪一步 */
 export interface StreamStatusInfo {
@@ -58,7 +58,16 @@ export interface ErrorItem extends DelegationMarks {
   content: string
 }
 
-export type TurnItem = MessageChunkItem | ReasoningItem | ToolItem | ErrorItem
+/** 上下文压缩段 */
+export interface CompactionItem extends DelegationMarks {
+  id: number
+  type: 'compaction'
+  status: 'running' | 'success' | 'skipped' | 'error'
+  startedAt?: number
+  durationMs?: number
+}
+
+export type TurnItem = MessageChunkItem | ReasoningItem | ToolItem | CompactionItem | ErrorItem
 
 /** 工具项还在跑 */
 export function isRunningTool(item: ToolItem): boolean {
@@ -77,6 +86,10 @@ export interface DelegationBucket {
 
 /** 一轮流式回复定位用的临时状态 */
 export interface TurnRuntime {
+  // 当前是否正在压缩上下文
+  compacting: boolean
+  // 当前压缩段序号
+  activeCompactionItemId: number | null
   // 下一个显示项序号
   nextItemId: number
   // 正在追加的正文项序号
@@ -94,6 +107,8 @@ export interface TurnRuntime {
 // 从已有显示项恢复序号和调用 ID 索引
 export function createTurnRuntime(items: TurnItem[] = []): TurnRuntime {
   return {
+    compacting: false,
+    activeCompactionItemId: null,
     nextItemId: items.reduce((nextId, item) => Math.max(nextId, item.id + 1), 0),
     activeTextItemId: null,
     activeReasoningItemId: null,
@@ -157,7 +172,12 @@ export interface DelegationGroupItem {
 }
 
 export type DisplayItem =
-  MessageChunkItem | ReasoningItem | ErrorItem | ToolGroupItem | DelegationGroupItem
+  | MessageChunkItem
+  | ReasoningItem
+  | CompactionItem
+  | ErrorItem
+  | ToolGroupItem
+  | DelegationGroupItem
 
 // 宿主那条 task 的判据：带子代理名字、不带委派标识
 function asDelegationHost(item: TurnItem): ToolItem | undefined {

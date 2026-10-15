@@ -59,6 +59,9 @@ class ThreadState(AgentState):
     # 已开放工具
     promoted: Annotated[PromotedTools | None, merge_promoted]
 
+    # 已压缩历史摘要
+    summary_text: NotRequired[str]
+
     # 本轮上传的附件信息
     uploaded_files: NotRequired[list[UploadedFileInfo]]
 

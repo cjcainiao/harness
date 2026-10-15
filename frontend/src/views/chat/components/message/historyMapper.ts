@@ -1,7 +1,14 @@
 // 历史轮次映射
 import type { TurnInfo, TurnItemInfo, TurnUsageInfo } from '@/api/history'
 import { isInlineUploadImage, uploadPreviewUrl, type UploadedFileInfo } from '@/api/uploads'
-import type { ChatAttachment, ChatTurn, ToolItem, TurnItem, TurnStatus, TurnUsage } from './messageTurn'
+import type {
+  ChatAttachment,
+  ChatTurn,
+  ToolItem,
+  TurnItem,
+  TurnStatus,
+  TurnUsage,
+} from './messageTurn'
 
 // ISO-8601 时间转时间戳
 export function toTimestamp(value: string): number {
@@ -31,8 +38,14 @@ function toTurnStatus(status: string): TurnStatus {
 }
 
 // 历史工具状态
-function toToolStatus(status: ToolItem['status'] | null): ToolItem['status'] {
+function toToolStatus(status: TurnItemInfo['status']): ToolItem['status'] {
   return status === 'success' || status === 'error' ? status : 'error'
+}
+
+// 历史中未完成的压缩按跳过显示
+function toCompactionStatus(status: TurnItemInfo['status']) {
+  if (status === 'success' || status === 'error' || status === 'skipped') return status
+  return 'skipped' as const
 }
 
 // 用量字段映射
@@ -73,6 +86,15 @@ function toTurnItem(item: TurnItemInfo, index: number): TurnItem {
       output: item.output ?? undefined,
       durationMs: item.duration_ms ?? undefined,
       toolCallId: item.tool_call_id ?? undefined,
+      ...marks,
+    }
+  }
+  if (item.kind === 'compaction') {
+    return {
+      id: index,
+      type: 'compaction',
+      status: toCompactionStatus(item.status),
+      durationMs: item.duration_ms ?? undefined,
       ...marks,
     }
   }

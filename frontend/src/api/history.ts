@@ -3,7 +3,7 @@ import requestUtil, { type ApiResult } from '@/utils/requestUtil'
 import type { UploadedFileInfo } from '@/api/uploads'
 
 /** 渲染段类型 */
-export type TurnItemKind = 'message' | 'reasoning' | 'tool' | 'error'
+export type TurnItemKind = 'message' | 'reasoning' | 'tool' | 'compaction' | 'error'
 
 /** 工具执行状态 */
 export type ToolStatus = 'preparing' | 'running' | 'success' | 'error'
@@ -44,8 +44,8 @@ export interface TurnItemInfo {
   tool: string | null
   // 工具调用标识
   tool_call_id: string | null
-  // 工具状态
-  status: ToolStatus | null
+  // 工具或压缩状态
+  status: ToolStatus | 'skipped' | null
   // 工具入参
   arguments: Record<string, unknown> | string | null
   // 工具返回内容

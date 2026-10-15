@@ -27,6 +27,7 @@ const statusTexts: Record<StreamPhase, string> = {
   waiting: '快进一下…',
   tool: '正在执行工具…',
   streaming: '正在回复…',
+  compacting: '正在压缩上下文…',
 }
 
 const text = computed(() => {

@@ -43,6 +43,7 @@
                 :host="item.host"
                 :parts="item.parts"
               />
+              <ContextCompactionMessage v-else-if="item.type === 'compaction'" :item="item" />
               <MessageError v-else :content="item.content" />
             </div>
             <MessageError v-if="turn.status === 'interrupted'" content="回复未完成" />
@@ -89,6 +90,7 @@ import type { ChatSendRequest } from '@/api/chat'
 import type { UploadedFileInfo } from '@/api/uploads'
 import { useChatSessionsStore } from '@/stores/chatSessions'
 import { createUuid } from '@/utils/uuidUtil'
+import ContextCompactionMessage from './ContextCompactionMessage.vue'
 import MessageChunk from './MessageChunk.vue'
 import MessageError from './MessageError.vue'
 import MessageLocator from './MessageLocator.vue'
@@ -144,6 +146,7 @@ const streamStatus = computed<StreamStatusInfo>(() => {
   void chatSessions.streamTick(props.threadId)
   const active = [...turns.value].reverse().find((turn) => turn.status === 'streaming')
   if (!active) return { phase: 'idle' }
+  if (chatSessions.isCompacting(active.id)) return { phase: 'compacting' }
 
   const last = active.items[active.items.length - 1]
   if (last?.type === 'tool' && isRunningTool(last)) {

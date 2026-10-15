@@ -5,7 +5,11 @@ import type { ChatSendRequest, ChatStreamRequest } from '@/api/chat'
 import type { UploadedFileInfo } from '@/api/uploads'
 import { fetchThreadTurns, fetchThreads } from '@/api/history'
 import type { ThreadCursor, ThreadInfo, TurnInfo } from '@/api/history'
-import { mapTurns, toChatAttachments, toTimestamp } from '@/views/chat/components/message/historyMapper'
+import {
+  mapTurns,
+  toChatAttachments,
+  toTimestamp,
+} from '@/views/chat/components/message/historyMapper'
 import { createTurnRuntime, isRunningTool } from '@/views/chat/components/message/messageTurn'
 import type {
   ChatTurn,
@@ -366,6 +370,11 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
   // 某次委派收到的子项
   function getDelegation(turnId: string, delegationId: string): DelegationBucket | undefined {
     return runtimes.get(turnId)?.delegations.get(delegationId)
+  }
+
+  // 当前轮次是否在压缩上下文
+  function isCompacting(turnId: string): boolean {
+    return runtimes.get(turnId)?.compacting === true
   }
 
   // 该会话是否还有未收尾的轮次
@@ -746,8 +755,55 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     if (item?.type === 'reasoning') item.durationMs = elapsedSince(item.startedAt)
   }
 
+  // 完成当前上下文压缩段
+  function finishCompaction(
+    turn: ChatTurn,
+    runtime: TurnRuntime,
+    status: 'success' | 'skipped' | 'error',
+    duration?: unknown,
+  ): void {
+    const id = runtime.activeCompactionItemId
+    runtime.activeCompactionItemId = null
+    runtime.compacting = false
+    if (id === null) return
+    const item = turn.items.find((entry) => entry.id === id)
+    if (item?.type !== 'compaction') return
+    item.status = status
+    item.durationMs =
+      typeof duration === 'number' && Number.isFinite(duration) && duration >= 0
+        ? Math.round(duration)
+        : elapsedSince(item.startedAt)
+  }
+
+  // 流式压缩进度落成一条可恢复的显示项
+  function handleCompaction(turn: ChatTurn, runtime: TurnRuntime, event: MessageEvent): boolean {
+    if (event.sub_type === 'start') {
+      finishCompaction(turn, runtime, 'skipped')
+      const id = runtime.nextItemId++
+      turn.items.push({ id, type: 'compaction', status: 'running', startedAt: Date.now() })
+      runtime.activeCompactionItemId = id
+      runtime.compacting = true
+      return true
+    }
+    if (event.sub_type === 'finish') {
+      finishCompaction(turn, runtime, 'success', event.duration_ms)
+      return true
+    }
+    if (event.sub_type === 'skip' || event.sub_type === 'error') {
+      finishCompaction(
+        turn,
+        runtime,
+        event.sub_type === 'skip' ? 'skipped' : 'error',
+        event.duration_ms,
+      )
+      return true
+    }
+    return false
+  }
+
   // 结束状态写回历史，避免重开窗口后持续显示加载中
   function handleDone(turn: ChatTurn, runtime: TurnRuntime): void {
+    finishCompaction(turn, runtime, 'skipped')
     turn.status = 'completed'
     closeUnfinishedTools(turn, runtime)
     markUnreadWhenUnwatched(turn)
@@ -756,6 +812,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
 
   // 主动停止或连接中断，保留已有回复但不算完成
   function handleInterrupted(turn: ChatTurn, runtime: TurnRuntime): void {
+    finishCompaction(turn, runtime, 'skipped')
     turn.status = 'interrupted'
     closeUnfinishedTools(turn, runtime)
     markUnreadWhenUnwatched(turn)
@@ -763,6 +820,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
   }
 
   function handleError(turn: ChatTurn, runtime: TurnRuntime, event: MessageEvent): void {
+    finishCompaction(turn, runtime, 'error')
     const message = typeof event.message === 'string' && event.message ? event.message : '请求失败'
     turn.items.push({ id: runtime.nextItemId++, type: 'error', content: message })
     turn.status = 'failed'
@@ -810,6 +868,10 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
       case 'subagent':
         closeMessageChunk(runtime)
         handleSubagent(turn, runtime, value)
+        break
+      case 'context_compaction':
+        closeMessageChunk(runtime)
+        if (!handleCompaction(turn, runtime, value)) return false
         break
       case 'usage':
         handleUsage(turn, runtime, value)
@@ -907,6 +969,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     prependTurns,
     getTurns,
     getDelegation,
+    isCompacting,
     getUsage,
     addSessionTokens,
     startTurn,
