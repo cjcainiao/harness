@@ -12,7 +12,7 @@ import httpx
 from langchain.tools import ToolRuntime, tool
 from pydantic import BaseModel, ConfigDict, Field
 
-from harness.agents.middlewares.thread_data import workspace_path_for
+from harness.sandbox.paths import workspace_path_for
 from harness.tools.tool_settings import get_tool_settings
 
 

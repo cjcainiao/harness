@@ -12,8 +12,8 @@ from langchain_core.runnables import run_in_executor
 from langgraph.config import get_config
 from langgraph.runtime import Runtime
 
-from harness.agents.middlewares.thread_data import workspace_path_for
 from harness.agents.thread_state import ThreadState, UploadedFileInfo
+from harness.sandbox.paths import workspace_path_for
 
 
 # 校验本轮附件对应的本地文件

@@ -25,6 +25,10 @@ system:
   workspace_dir: data/workspaces   # 会话工作空间根目录，相对路径按后端项目根解析
   upload_max_bytes: 20971520   # 单个上传文件的最大字节数
 
+# 沙箱配置
+sandbox:
+  use: harness.sandbox.local.local_sandbox_provider:LocalSandboxProvider # 沙箱提供者类路径，格式为 module:Class
+
 # 记忆配置
 memory:
   enabled: true          # 是否启用短期记忆

@@ -13,8 +13,8 @@ from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict, Field
 
-from harness.agents.middlewares.thread_data import workspace_path_for
 from harness.config.app_config import get_app_config
+from harness.sandbox.paths import workspace_path_for
 
 
 # 可交给视觉模型的图片格式

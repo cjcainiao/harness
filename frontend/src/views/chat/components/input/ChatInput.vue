@@ -384,6 +384,7 @@ import {
   type UploadedFileInfo,
 } from '@/api/uploads'
 import { useDragScroll } from '@/utils/dragScrollUtil'
+import { readChatPreferences, writeChatPreferences } from '@/utils/chatPreferencesUtil'
 import {
   describeRejectedUploadFiles,
   describeVisionRejectedFiles,
@@ -805,6 +806,16 @@ const chatOptions = computed<ChatSendRequest>(() => {
   }
 })
 
+// 只保存已在模型列表中的选择
+function saveModelPreference(): void {
+  const model = selectedModel.value
+  if (!model) return
+  writeChatPreferences(props.threadId, {
+    modelName: model.model_name,
+    reasoningEffort: reasoningEffort.value,
+  })
+}
+
 function prepareModelMenu() {
   showModelOptions.value = false
   infoModelName.value = ''
@@ -826,13 +837,15 @@ function chooseModel(modelName: string) {
       duration: 5000,
     })
   }
-  if (reasoningOptions.value.includes(reasoningEffort.value)) return
-  const dropped = reasoningEffort.value
-  reasoningEffort.value = EFFORT_OFF
-  ElMessage.warning({
-    message: `${modelLabel.value} 不支持 ${dropped} 推理强度，已切到${EFFORT_OFF}`,
-    plain: true,
-  })
+  if (!reasoningOptions.value.includes(reasoningEffort.value)) {
+    const dropped = reasoningEffort.value
+    reasoningEffort.value = EFFORT_OFF
+    ElMessage.warning({
+      message: `${modelLabel.value} 不支持 ${dropped} 推理强度，已切到${EFFORT_OFF}`,
+      plain: true,
+    })
+  }
+  saveModelPreference()
 }
 
 // 展开或收起配置卡
@@ -870,6 +883,7 @@ function commitAt(position: number) {
     index === effortLastIndex.value ? 1840 : 620,
   )
   reasoningEffort.value = effort
+  saveModelPreference()
 }
 
 function armDragTimer() {
@@ -933,7 +947,9 @@ function onSliderKeyDown(event: KeyboardEvent) {
   chooseEffort(reasoningOptions.value[targetIndex] ?? EFFORT_OFF)
 }
 
+let unmounted = false
 onUnmounted(() => {
+  unmounted = true
   document.removeEventListener('pointerdown', dismissCommandMenuOutside)
   window.clearTimeout(dragTimer)
   window.clearTimeout(settleTimer)
@@ -947,18 +963,33 @@ onUnmounted(() => {
 
 onMounted(() => document.addEventListener('pointerdown', dismissCommandMenuOutside))
 
-// 拉取模型列表，第一项作为默认选中
+// 拉取模型列表并恢复本会话的选择
 async function loadModels() {
   try {
-    models.value = await fetchModels()
-    selectedModelName.value = models.value[0]?.model_name ?? ''
+    const available = await fetchModels()
+    if (unmounted) return
+    models.value = available
+    const saved = readChatPreferences(props.threadId)
+    const model = available.find((item) => item.model_name === saved?.modelName) ?? available[0]
+    selectedModelName.value = model?.model_name ?? ''
+    if (
+      saved &&
+      saved.modelName === model?.model_name &&
+      reasoningOptions.value.includes(saved.reasoningEffort)
+    ) {
+      reasoningEffort.value = saved.reasoningEffort
+    } else {
+      reasoningEffort.value = EFFORT_OFF
+    }
+    saveModelPreference()
   } catch (error) {
+    if (unmounted) return
     ElMessage.error({
       message: error instanceof Error ? error.message : '获取模型列表失败',
       plain: true,
     })
   } finally {
-    modelsLoading.value = false
+    if (!unmounted) modelsLoading.value = false
   }
 }
 

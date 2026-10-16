@@ -14,9 +14,9 @@ from typing import BinaryIO
 from urllib.parse import quote
 
 from app.schemas.chat.uploads_schema import UploadInfo
-from harness.agents.middlewares.thread_data import ensure_workspace_dir, workspace_path_for
 from harness.agents.thread_state import UploadedFileInfo
 from harness.config.app_config import get_app_config
+from harness.sandbox.paths import ensure_workspace_dir, workspace_path_for
 
 
 # 允许上传的文件类型

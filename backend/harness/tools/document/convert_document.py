@@ -12,7 +12,7 @@ from langchain.tools import ToolRuntime, tool
 from markitdown import MarkItDown, StreamInfo
 from pydantic import BaseModel, ConfigDict, Field
 
-from harness.agents.middlewares.thread_data import workspace_path_for
+from harness.sandbox.paths import workspace_path_for
 
 
 # 当前支持的文档格式

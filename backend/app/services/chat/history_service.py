@@ -14,8 +14,8 @@ from app.schemas.chat.history_schema import (
     UsageInfo,
 )
 from harness.agents.memory.checkpointer import get_checkpointer
-from harness.agents.middlewares.thread_data import workspace_path_for
 from harness.core.logger import get_logger
+from harness.sandbox.paths import workspace_path_for
 from harness.storage import history
 
 

@@ -21,6 +21,7 @@ from harness.models.factory import ReasoningEffort
 from harness.mcp.cache import get_cached_mcp_discoveries
 from harness.runtime.events import parse_message_events
 from harness.runtime.recommendation import generate_recommendations
+from harness.sandbox.sandbox_provider import sandbox_run
 from harness.storage import history
 from harness.storage.recorder import TurnRecorder
 
@@ -136,49 +137,51 @@ async def stream_agent(
             app_config=app_config,
         )
 
-        # 本轮附件状态
-        async for chunk in agent.astream(
-            {
-                "messages": [{"role": "user", "content": message}],
-                "uploaded_files": list(uploaded_files),
-            },
-            config=run_config,
-            durability=app_config.memory.durability,
-            stream_mode=["messages", "custom"],
-            subgraphs=False,
-            version="v2",
-        ):
-            stream_type = chunk.get("type")
-            data = chunk.get("data")
-            namespace = chunk.get("ns")
+        # 本轮沙箱作用域
+        async with sandbox_run(thread_id):
+            # 本轮消息与附件状态
+            async for chunk in agent.astream(
+                {
+                    "messages": [{"role": "user", "content": message}],
+                    "uploaded_files": list(uploaded_files),
+                },
+                config=run_config,
+                durability=app_config.memory.durability,
+                stream_mode=["messages", "custom"],
+                subgraphs=False,
+                version="v2",
+            ):
+                stream_type = chunk.get("type")
+                data = chunk.get("data")
+                namespace = chunk.get("ns")
 
-            if stream_type == "messages":
-                message_chunk, metadata = data
-                if metadata and metadata.get("lc_source") == "summarization":
-                    # 摘要正文只供中间件使用，用量仍计入本轮
+                if stream_type == "messages":
+                    message_chunk, metadata = data
+                    if metadata and metadata.get("lc_source") == "summarization":
+                        # 摘要正文只供中间件使用，用量仍计入本轮
+                        for payload in parse_message_events(message_chunk):
+                            if payload.get("type") == "usage":
+                                event = _with_source(payload, metadata, namespace)
+                                track(event)
+                                yield _encode_sse(event)
+                        continue
                     for payload in parse_message_events(message_chunk):
-                        if payload.get("type") == "usage":
-                            event = _with_source(payload, metadata, namespace)
-                            track(event)
-                            yield _encode_sse(event)
-                    continue
-                for payload in parse_message_events(message_chunk):
-                    event = _with_source(payload, metadata, namespace)
+                        event = _with_source(payload, metadata, namespace)
+                        track(event)
+                        yield _encode_sse(event)
+
+                elif stream_type == "custom":
+                    if isinstance(data, dict):
+                        event = dict(data)
+                        event.setdefault("type", "custom")
+                    else:
+                        event = {"type": "custom", "data": data}
+
+                    if namespace:
+                        event.setdefault("namespace", list(namespace))
+
                     track(event)
                     yield _encode_sse(event)
-
-            elif stream_type == "custom":
-                if isinstance(data, dict):
-                    event = dict(data)
-                    event.setdefault("type", "custom")
-                else:
-                    event = {"type": "custom", "data": data}
-
-                if namespace:
-                    event.setdefault("namespace", list(namespace))
-
-                track(event)
-                yield _encode_sse(event)
 
         final_status = history.TURN_COMPLETED
         # 先关闭回答正文并保存完成状态

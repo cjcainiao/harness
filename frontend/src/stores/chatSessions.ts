@@ -21,6 +21,7 @@ import type {
   TurnUsage,
 } from '@/views/chat/components/message/messageTurn'
 import { createUuid } from '@/utils/uuidUtil'
+import { removeChatPreferences } from '@/utils/chatPreferencesUtil'
 
 export interface ChatSession {
   id: string
@@ -163,6 +164,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
   // 从本地移除已删除会话及其缓存
   function removeSession(id: string): void {
     deletedThreadIds.add(id)
+    removeChatPreferences(id)
     sessions.value = sessions.value.filter((session) => session.id !== id)
     delete turnsByThread.value[id]
     delete turnsCursor.value[id]
@@ -217,6 +219,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     if (redundant.size) {
       sessions.value = sessions.value.filter((session) => !redundant.has(session.id))
       for (const id of redundant) {
+        removeChatPreferences(id)
         localSessionIds.delete(id)
         historyLoaded.delete(id)
         unreadThreadIds.value.delete(id)
