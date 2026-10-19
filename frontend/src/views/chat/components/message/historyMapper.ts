@@ -89,6 +89,18 @@ function toTurnItem(item: TurnItemInfo, index: number): TurnItem {
       ...marks,
     }
   }
+  if (item.kind === 'image' && item.image_id && item.mime_type && item.width && item.height) {
+    return {
+      id: index,
+      type: 'image',
+      status: 'ready',
+      imageId: item.image_id,
+      mimeType: item.mime_type,
+      width: item.width,
+      height: item.height,
+      ...marks,
+    }
+  }
   if (item.kind === 'compaction') {
     return {
       id: index,

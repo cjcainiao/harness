@@ -1,0 +1,227 @@
+# 图片生成工具
+
+from __future__ import annotations
+
+import asyncio
+import base64
+import binascii
+import json
+from io import BytesIO
+from typing import Literal
+from urllib.parse import urlsplit
+
+import httpx
+from langchain.tools import ToolRuntime
+from langchain_core.tools import tool
+from PIL import Image, UnidentifiedImageError
+from pydantic import BaseModel, ConfigDict, Field
+
+from harness.tools.image.generated_files import save_generated_image
+from harness.tools.image.view_image import load_uploaded_image
+from harness.tools.tool_settings import get_tool_settings
+
+
+# 图片生成参数
+class GenerateImageArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
+    # 画面描述
+    prompt: str = Field(min_length=1, description="要生成的图片内容、风格与构图描述。")
+
+    # 图片画幅
+    aspect_ratio: Literal["1:1", "16:9", "9:16"] | None = Field(
+        default=None, description="图片画幅，可选 1:1、16:9 或 9:16；省略时使用系统默认画幅。"
+    )
+
+    # 当前会话的参考图片
+    reference_image_id: str | None = Field(
+        default=None, description="当前会话已上传图片的文件标识；仅在用户要求参考图片生成或编辑时传入。"
+    )
+
+    # 当前工具运行环境
+    runtime: ToolRuntime
+
+
+# 校验图片服务配置
+def _settings() -> dict:
+    settings = get_tool_settings("generate_image")
+    required_text = ("base_url", "api_key", "model")
+    for name in required_text:
+        if not isinstance(settings.get(name), str) or not settings[name].strip():
+            raise ValueError(f"generate_image 未配置 {name}")
+    base_url = settings["base_url"].strip().rstrip("/")
+    parsed = urlsplit(base_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.query or parsed.fragment:
+        raise ValueError("generate_image 的 base_url 无效")
+    timeout = settings.get("timeout_seconds")
+    max_bytes = settings.get("max_image_bytes")
+    max_pixels = settings.get("max_image_pixels")
+    max_prompt = settings.get("max_prompt_chars")
+    max_reference_bytes = settings.get("max_reference_image_bytes")
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0:
+        raise ValueError("generate_image 的 timeout_seconds 必须大于 0")
+    for name, value in (
+        ("max_image_bytes", max_bytes),
+        ("max_image_pixels", max_pixels),
+        ("max_prompt_chars", max_prompt),
+        ("max_reference_image_bytes", max_reference_bytes),
+    ):
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ValueError(f"generate_image 的 {name} 必须是正整数")
+    sizes = settings.get("sizes")
+    if not isinstance(sizes, dict) or any(
+        not isinstance(sizes.get(ratio), str) or not sizes[ratio]
+        for ratio in ("1:1", "16:9", "9:16")
+    ):
+        raise ValueError("generate_image 未正确配置 sizes")
+    if settings.get("default_aspect_ratio") not in sizes:
+        raise ValueError("generate_image 未正确配置 default_aspect_ratio")
+    hosts = settings.get("result_url_hosts")
+    if not isinstance(hosts, list) or not all(isinstance(host, str) and host for host in hosts):
+        raise ValueError("generate_image 未正确配置 result_url_hosts")
+    return {**settings, "base_url": base_url}
+
+
+# 校验参考图并编码给图片服务
+def _reference_image_data_url(thread_id: str, file_id: str, max_bytes: int) -> str:
+    source, mime_type, data = load_uploaded_image(thread_id, file_id)
+    if len(data) > max_bytes:
+        raise ValueError(f"参考图片超过大小限制：{source}")
+    try:
+        with Image.open(BytesIO(data)) as image:
+            width, height = image.size
+            if width > 8000 or height > 8000 or max(width, height) > 10 * min(width, height):
+                raise ValueError(f"参考图片尺寸或长宽比超出服务限制：{source}")
+            image.verify()
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as error:
+        raise ValueError(f"参考图片内容无效：{source}") from error
+    return f"data:{mime_type};base64,{base64.b64encode(data).decode('ascii')}"
+
+
+# 限定图片结果下载域名
+def _allowed_image_url(url: str, hosts: list[str]) -> bool:
+    try:
+        parsed = urlsplit(url)
+        hostname = (parsed.hostname or "").lower()
+        return (
+            parsed.scheme == "https"
+            and bool(hostname)
+            and parsed.username is None
+            and parsed.password is None
+            and parsed.port in (None, 443)
+            and any(hostname == host.lower() or hostname.endswith("." + host.lower()) for host in hosts)
+        )
+    except ValueError:
+        return False
+
+
+# 请求图片服务并读取生成内容
+async def _request_image(
+    prompt: str, size: str, settings: dict, reference_image_data_url: str | None = None
+) -> bytes:
+    endpoint = f"{settings['base_url']}/images/generations"
+    timeout = settings["timeout_seconds"]
+    max_bytes = settings["max_image_bytes"]
+    payload = {"model": settings["model"].strip(), "prompt": prompt, "size": size, "n": 1}
+    if reference_image_data_url is not None:
+        payload["image"] = reference_image_data_url
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+            response = await client.post(
+                endpoint,
+                headers={"Authorization": f"Bearer {settings['api_key'].strip()}"},
+                json=payload,
+            )
+            response.raise_for_status()
+            body = response.json()
+            if not isinstance(body, dict) or not isinstance(body.get("data"), list) or not body["data"]:
+                raise ValueError("图片服务返回格式无效")
+            first = body["data"][0]
+            if not isinstance(first, dict):
+                raise ValueError("图片服务返回格式无效")
+            encoded = first.get("b64_json")
+            if isinstance(encoded, str) and encoded:
+                if len(encoded) > (max_bytes + 2) // 3 * 4 + 16:
+                    raise ValueError("生成图片超过大小限制")
+                try:
+                    return base64.b64decode(encoded, validate=True)
+                except binascii.Error as error:
+                    raise ValueError("图片服务返回的图片编码无效") from error
+            url = first.get("url")
+            if not isinstance(url, str) or not _allowed_image_url(
+                url, settings["result_url_hosts"]
+            ):
+                raise ValueError("图片服务返回了未允许的图片地址")
+            async with client.stream("GET", url) as image_response:
+                image_response.raise_for_status()
+                chunks: list[bytes] = []
+                total = 0
+                async for chunk in image_response.aiter_bytes():
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise ValueError("生成图片超过大小限制")
+                    chunks.append(chunk)
+                return b"".join(chunks)
+    except httpx.TimeoutException as error:
+        raise ValueError("图片生成超时") from error
+    except httpx.HTTPStatusError as error:
+        raise ValueError(f"图片服务请求失败：HTTP {error.response.status_code}") from error
+    except httpx.RequestError as error:
+        raise ValueError("图片服务连接失败") from error
+    except json.JSONDecodeError as error:
+        raise ValueError("图片服务返回的内容不是 JSON") from error
+
+
+# 根据画面描述生成一张图片
+@tool("generate_image", args_schema=GenerateImageArgs)
+async def generate_image(
+    prompt: str,
+    runtime: ToolRuntime,
+    aspect_ratio: Literal["1:1", "16:9", "9:16"] | None = None,
+    reference_image_id: str | None = None,
+) -> str:
+    """根据文字描述生成图片，也可参考当前会话上传的图片进行编辑。
+
+    用户明确要求画图、生成图片、参考上传图片改图时使用。参考图片无效或生成失败时工具报错。
+
+    Args:
+        prompt: 要生成的图片内容、风格与构图描述。
+        aspect_ratio: 图片画幅，可选 1:1、16:9 或 9:16；省略时使用系统默认画幅。
+        reference_image_id: 当前会话已上传图片的文件标识；仅在用户要求参考图片生成或编辑时传入。
+
+    Returns:
+        JSON 对象字符串，包含 image_id 图片标识、mime_type 图片格式、width 宽度和 height 高度。
+    """
+    context = runtime.context or {}
+    thread_id = context.get("thread_id") or (runtime.config or {}).get("configurable", {}).get("thread_id")
+    if not isinstance(thread_id, str) or not thread_id:
+        raise ValueError("缺少 thread_id，无法保存生成图片")
+    settings = _settings()
+    prompt = prompt.strip()
+    if not prompt or len(prompt) > settings["max_prompt_chars"]:
+        raise ValueError("图片描述为空或超过长度限制")
+    ratio = aspect_ratio or settings["default_aspect_ratio"]
+    if ratio not in settings["sizes"]:
+        raise ValueError("不支持的图片画幅")
+    reference_image_data_url = None
+    if reference_image_id is not None:
+        reference_image_data_url = await asyncio.to_thread(
+            _reference_image_data_url, thread_id, reference_image_id, settings["max_reference_image_bytes"]
+        )
+    data = await _request_image(prompt, settings["sizes"][ratio], settings, reference_image_data_url)
+    stored = await asyncio.to_thread(
+        save_generated_image,
+        thread_id,
+        data,
+        settings["max_image_bytes"],
+        settings["max_image_pixels"],
+    )
+    return json.dumps(
+        {
+            "image_id": stored.image_id,
+            "mime_type": stored.mime_type,
+            "width": stored.width,
+            "height": stored.height,
+        },
+        ensure_ascii=False,
+    )

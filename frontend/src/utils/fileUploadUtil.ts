@@ -124,8 +124,3 @@ export function describeRejectedUploadFiles(names: string[]): string {
   const more = names.length > 3 ? ` 等 ${names.length} 个文件` : ''
   return `不支持上传这类文件：${shown}${more}`
 }
-
-// 当前模型不支持视觉时的提示文案
-export function describeVisionRejectedFiles(modelName: string): string {
-  return `当前模型「${modelName}」不支持图片上传`
-}

@@ -3,7 +3,7 @@ import requestUtil, { RequestError, type ApiResult } from '@/utils/requestUtil'
 import type { UploadedFileInfo } from '@/api/uploads'
 
 /** 渲染段类型 */
-export type TurnItemKind = 'message' | 'reasoning' | 'tool' | 'compaction' | 'error'
+export type TurnItemKind = 'message' | 'reasoning' | 'tool' | 'image' | 'compaction' | 'error'
 
 /** 工具执行状态 */
 export type ToolStatus = 'preparing' | 'running' | 'success' | 'error'
@@ -50,6 +50,11 @@ export interface TurnItemInfo {
   arguments: Record<string, unknown> | string | null
   // 工具返回内容
   output: unknown
+  // 生成图片标识、格式和尺寸
+  image_id?: string | null
+  mime_type?: string | null
+  width?: number | null
+  height?: number | null
   // 执行这段的子代理名称，主代理的段没有
   subagent?: string | null
   // 所属委派标识，宿主那条 task 段没有

@@ -40,6 +40,47 @@ def _image_mime_type(data: bytes) -> str | None:
     return None
 
 
+# 校验并读取当前会话上传图片
+def load_uploaded_image(thread_id: str, file_id: str) -> tuple[Path, str, bytes]:
+    workspace = workspace_path_for(thread_id)
+    source = workspace / "uploads" / file_id / "content"
+    metadata_path = source.parent / "metadata.json"
+    if len(file_id) != 32 or any(char not in "0123456789abcdef" for char in file_id):
+        raise ValueError(f"图片标识无效：{file_id}")
+    if any(path.is_symlink() for path in (workspace, workspace / "uploads", source.parent, source, metadata_path)):
+        raise ValueError(f"图片路径无效：{source}")
+    if not source.is_file() or not metadata_path.is_file():
+        raise ValueError(f"图片不存在或不属于当前会话：{source}")
+
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise ValueError(f"图片元数据无法读取：{metadata_path}") from error
+    if not isinstance(metadata, dict) or metadata.get("file_id") != file_id or metadata.get("thread_id") != thread_id:
+        raise ValueError(f"图片元数据无效：{metadata_path}")
+    name = metadata.get("name")
+    if not isinstance(name, str) or not name or Path(name).name != name:
+        raise ValueError(f"图片文件名无效：{metadata_path}")
+    expected_mime = IMAGE_MIME_TYPES.get(Path(name).suffix.lower())
+    if expected_mime is None or metadata.get("mime_type") != expected_mime:
+        raise ValueError(f"不支持此格式的图片：{source}（原文件名：{name}）")
+
+    max_bytes = get_app_config().system.upload_max_bytes
+    expected_size = metadata.get("size")
+    if type(expected_size) is not int or expected_size < 1 or expected_size > max_bytes:
+        raise ValueError(f"图片大小无效：{source}")
+    try:
+        with source.open("rb") as stream:
+            image_data = stream.read(max_bytes + 1)
+    except OSError as error:
+        raise ValueError(f"图片无法读取：{source}") from error
+    if len(image_data) != expected_size:
+        raise ValueError(f"图片大小与上传记录不符：{source}")
+    if _image_mime_type(image_data) != expected_mime:
+        raise ValueError(f"图片内容与格式不符：{source}")
+    return source, expected_mime, image_data
+
+
 # 图片查看参数
 class ViewImageArgs(BaseModel):
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
@@ -90,7 +131,6 @@ def view_image(
     requested = Path(image_path)
     file_id = requested.parent.name
     source = workspace / "uploads" / file_id / "content"
-    metadata_path = source.parent / "metadata.json"
     if (
         not requested.is_absolute()
         or len(file_id) != 32
@@ -98,44 +138,12 @@ def view_image(
         or requested != source
     ):
         raise ValueError(f"图片路径不属于当前会话上传目录：{image_path}")
-    if any(path.is_symlink() for path in (workspace, workspace / "uploads", source.parent, source, metadata_path)):
-        raise ValueError(f"图片路径无效：{source}")
-    if not source.is_file() or not metadata_path.is_file():
-        raise ValueError(f"图片不存在：{source}")
-
-    # 校验上传元数据
-    try:
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as error:
-        raise ValueError(f"图片元数据无法读取：{metadata_path}") from error
-    if not isinstance(metadata, dict) or metadata.get("file_id") != file_id or metadata.get("thread_id") != thread_id:
-        raise ValueError(f"图片元数据无效：{metadata_path}")
-    name = metadata.get("name")
-    if not isinstance(name, str) or not name or Path(name).name != name:
-        raise ValueError(f"图片文件名无效：{metadata_path}")
-    expected_mime = IMAGE_MIME_TYPES.get(Path(name).suffix.lower())
-    if expected_mime is None or metadata.get("mime_type") != expected_mime:
-        raise ValueError(f"不支持此格式的图片：{source}（原文件名：{name}）")
-
-    # 读取并核对图片内容
-    max_bytes = get_app_config().system.upload_max_bytes
-    expected_size = metadata.get("size")
-    if type(expected_size) is not int or expected_size < 1 or expected_size > max_bytes:
-        raise ValueError(f"图片大小无效：{source}")
-    try:
-        with source.open("rb") as stream:
-            image_data = stream.read(max_bytes + 1)
-    except OSError as error:
-        raise ValueError(f"图片无法读取：{source}") from error
-    if len(image_data) != expected_size:
-        raise ValueError(f"图片大小与上传记录不符：{source}")
-    if _image_mime_type(image_data) != expected_mime:
-        raise ValueError(f"图片内容与格式不符：{source}")
+    source, expected_mime, image_data = load_uploaded_image(thread_id, file_id)
 
     # 记录图片元数据与本次工具结果
     image_path = source.as_posix()
     content = json.dumps(
-        {"image_path": image_path, "mime_type": expected_mime, "size": expected_size},
+        {"image_path": image_path, "mime_type": expected_mime, "size": len(image_data)},
         ensure_ascii=False,
     )
     return Command(
@@ -143,7 +151,7 @@ def view_image(
             "viewed_images": {
                 image_path: {
                     "mime_type": expected_mime,
-                    "size": expected_size,
+                    "size": len(image_data),
                     "actual_path": str(source),
                     "sha256": hashlib.sha256(image_data).hexdigest(),
                 }

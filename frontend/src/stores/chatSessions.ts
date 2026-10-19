@@ -14,6 +14,8 @@ import { createTurnRuntime, isRunningTool } from '@/views/chat/components/messag
 import type {
   ChatTurn,
   DelegationBucket,
+  ImageAspectRatio,
+  ReadyImageItem,
   ToolItem,
   TurnFeedback,
   TurnItem,
@@ -64,6 +66,59 @@ function elapsedSince(startedAt?: number): number | undefined {
 // 空串按缺失处理
 function readToolIdentity(value: unknown): string | undefined {
   return typeof value === 'string' && value ? value : undefined
+}
+
+// 只接受生图工具的完整结果
+function readGeneratedImage(value: unknown): Omit<ReadyImageItem, 'id'> | undefined {
+  if (typeof value !== 'string') return undefined
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value)
+  } catch {
+    return undefined
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined
+  const result = parsed as Record<string, unknown>
+  if (
+    typeof result.image_id !== 'string' ||
+    !/^[0-9a-f]{32}$/.test(result.image_id) ||
+    !['image/png', 'image/jpeg', 'image/webp'].includes(String(result.mime_type)) ||
+    !Number.isSafeInteger(result.width) ||
+    !Number.isSafeInteger(result.height) ||
+    (result.width as number) < 1 ||
+    (result.height as number) < 1
+  ) {
+    return undefined
+  }
+  return {
+    type: 'image',
+    status: 'ready',
+    imageId: result.image_id,
+    mimeType: result.mime_type as string,
+    width: result.width as number,
+    height: result.height as number,
+  }
+}
+
+// 读取图片工具请求的画幅
+function readImageAspectRatio(value: unknown): ImageAspectRatio {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return '1:1'
+  const ratio = (value as Record<string, unknown>).aspect_ratio
+  return ratio === '16:9' || ratio === '9:16' ? ratio : '1:1'
+}
+
+// 清理未完成的图片占位
+function removeGeneratingImages(items: TurnItem[], toolCallId?: string): void {
+  for (let index = items.length - 1; index >= 0; index--) {
+    const item = items[index]
+    if (
+      item?.type === 'image' &&
+      item.status === 'generating' &&
+      (!toolCallId || item.toolCallId === toolCallId)
+    ) {
+      items.splice(index, 1)
+    }
+  }
 }
 
 // 复制一份轮次，避免和调用方共用对象
@@ -601,6 +656,20 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     if (!item) return
     item.status = 'running'
     if (event.arguments !== undefined) item.arguments = event.arguments
+    const callId = item.toolCallId
+    if (
+      item.tool === 'generate_image' &&
+      callId &&
+      !turn.items.some((entry) => entry.type === 'image' && entry.toolCallId === callId)
+    ) {
+      turn.items.push({
+        id: runtime.nextItemId++,
+        type: 'image',
+        status: 'generating',
+        toolCallId: callId,
+        aspectRatio: readImageAspectRatio(item.arguments),
+      })
+    }
   }
 
   function handleToolResult(turn: ChatTurn, runtime: TurnRuntime, event: MessageEvent): void {
@@ -610,6 +679,34 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     if (event.content !== undefined) item.output = event.content
     if (typeof event.duration_ms === 'number') item.durationMs = event.duration_ms
     else item.durationMs ??= elapsedSince(item.startedAt)
+    if (item.tool === 'generate_image') {
+      const image = readGeneratedImage(event.content)
+      if (!image) {
+        item.status = 'error'
+        item.output = '图片服务返回的结果无效'
+        removeGeneratingImages(turn.items, item.toolCallId)
+        return
+      }
+      if (
+        turn.items.some(
+          (entry) =>
+            entry.type === 'image' && entry.status === 'ready' && entry.imageId === image.imageId,
+        )
+      ) {
+        removeGeneratingImages(turn.items, item.toolCallId)
+        return
+      }
+      const pendingIndex = turn.items.findIndex(
+        (entry) =>
+          entry.type === 'image' &&
+          entry.status === 'generating' &&
+          entry.toolCallId === item.toolCallId,
+      )
+      const id = pendingIndex < 0 ? runtime.nextItemId++ : turn.items[pendingIndex]!.id
+      const ready: ReadyImageItem = { id, ...image, toolCallId: item.toolCallId }
+      if (pendingIndex < 0) turn.items.push(ready)
+      else turn.items.splice(pendingIndex, 1, ready)
+    }
   }
 
   function handleToolError(turn: ChatTurn, runtime: TurnRuntime, event: MessageEvent): void {
@@ -619,6 +716,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     item.output = event.content ?? event.message
     if (typeof event.duration_ms === 'number') item.durationMs = event.duration_ms
     else item.durationMs ??= elapsedSince(item.startedAt)
+    if (item.tool === 'generate_image') removeGeneratingImages(turn.items, item.toolCallId)
   }
 
   // 一次委派一个桶，边界事件先到就先建
@@ -779,6 +877,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
         item.status = 'error'
         item.durationMs ??= elapsedSince(item.startedAt)
       }
+      removeGeneratingImages(items)
     }
   }
 

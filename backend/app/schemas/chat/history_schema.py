@@ -11,7 +11,7 @@ from app.schemas.chat.uploads_schema import UploadInfo
 class TurnItemInfo(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    kind: str = Field(description="段类型，取值 message / reasoning / tool / compaction / error")
+    kind: str = Field(description="段类型，取值 message / reasoning / tool / image / compaction / error")
     content: str | None = Field(default=None, description="正文、推理或失败提示文本")
     duration_ms: int | None = Field(default=None, description="本段耗时，单位毫秒")
     tool: str | None = Field(default=None, description="工具名称")
@@ -21,6 +21,10 @@ class TurnItemInfo(BaseModel):
     )
     arguments: dict[str, Any] | str | None = Field(default=None, description="工具入参")
     output: Any = Field(default=None, description="工具返回内容")
+    image_id: str | None = Field(default=None, description="生成图片标识")
+    mime_type: str | None = Field(default=None, description="生成图片格式")
+    width: int | None = Field(default=None, description="生成图片宽度")
+    height: int | None = Field(default=None, description="生成图片高度")
     subagent: str | None = Field(default=None, description="执行这段的子代理名称")
     delegation_id: str | None = Field(default=None, description="所属委派标识")
 

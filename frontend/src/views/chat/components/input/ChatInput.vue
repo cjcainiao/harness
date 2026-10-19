@@ -386,7 +386,6 @@ import {
 import { useDragScroll } from '@/utils/dragScrollUtil'
 import {
   describeRejectedUploadFiles,
-  describeVisionRejectedFiles,
   isAllowedUploadFile,
   isImageUploadFile,
 } from '@/utils/fileUploadUtil'
@@ -573,24 +572,15 @@ function addFiles(files: File[]) {
   // 先过类型白名单，不合格的只提示、不进附件条
   const accepted: File[] = []
   const rejected: string[] = []
-  let visionRejected = false
   for (const file of files) {
     if (!isAllowedUploadFile(file)) {
       rejected.push(file.name)
-      continue
-    }
-    // 没有视觉能力的模型不收图片，同样只提示、不进附件条
-    if (isImageUploadFile(file) && !selectedModel.value?.supports_vision) {
-      visionRejected = true
       continue
     }
     accepted.push(file)
   }
   if (rejected.length > 0)
     ElMessage.warning({ message: describeRejectedUploadFiles(rejected), plain: true })
-  if (visionRejected)
-    ElMessage.warning({ message: describeVisionRejectedFiles(modelLabel.value), plain: true })
-
   const existing = new Set(selectedFiles.value.map((item) => item.key))
   for (const file of accepted) {
     const key = fileKey(file)
@@ -1095,11 +1085,6 @@ function sendMessage() {
   if (!content) return
   // 上传未完成或并发满了时保留草稿
   if (props.streamLimited || hasUploadingFiles.value) return
-  // 发送前视觉能力校验
-  if (selectedFiles.value.some((item) => item.isImage) && !selectedModel.value?.supports_vision) {
-    ElMessage.warning({ message: '当前模型不支持图片，请移除图片或切换模型', plain: true })
-    return
-  }
   const attachments = selectedFiles.value.flatMap((item) => (item.uploaded ? [item.uploaded] : []))
   emit('send', { content, attachments, request: chatOptions.value })
   selectedCommandName.value = null

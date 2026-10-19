@@ -54,8 +54,8 @@
 - 只在会增量增长的字段上挂 watcher，一次性写入的 output 不用跟
 
 ## 附件上传闸门
-- 入口只有 `ChatInput.vue` 的 `addFiles`，三条闸门按序：类型白名单 → 当前模型 `supports_vision` 拦图片 → 按 `fileKey`（`name:size:lastModified`）去重
-- 不合格的只出提示、不进附件条；视觉拦截的文案不带文件名
+- 入口只有 `ChatInput.vue` 的 `addFiles`，两条闸门按序：类型白名单 → 按 `fileKey`（`name:size:lastModified`）去重；非视觉聊天模型也可上传图片供生图工具参考
+- 不合格的只出提示、不进附件条；图片内容分析仍需后端视觉模型能力校验
 - 白名单写死在 `utils/fileUploadUtil.ts`，接后端配置时替换这一处
 - 附件条 `v-for` 的 `:key` 就是 `fileKey`，要放开重复必须同时换成每项自增 uid，否则 Vue 撞 key、移除会删错条
 - 隐藏的 `<input type="file">` 每次选完要 `input.value = ''`，否则同一个文件再选不触发 `change`

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from typing import Any
 
@@ -45,6 +46,7 @@ class TurnRecorder:
         self._reasoning_start: float | None = None
         self._tool_by_call_id: dict[str, int] = {}
         self._tool_by_index: dict[int, int] = {}
+        self._recorded_images: set[str] = set()
         self._active_compaction: tuple[int, float] | None = None
 
     # 攒段结果，顺序即显示顺序
@@ -193,6 +195,46 @@ class TurnRecorder:
         if isinstance(duration, (int, float)):
             segment["duration_ms"] = round(duration)
         return segment
+
+    # 把成功的生图工具结果落成独立图片段
+    def _record_generated_image(self, event: dict[str, Any]) -> None:
+        if event.get("tool") != "generate_image":
+            return
+        call_id = event.get("tool_call_id")
+        content = event.get("content")
+        if not isinstance(call_id, str) or call_id in self._recorded_images or not isinstance(content, str):
+            return
+        try:
+            result = json.loads(content)
+        except ValueError:
+            return
+        if not isinstance(result, dict):
+            return
+        image_id = result.get("image_id")
+        mime_type = result.get("mime_type")
+        width = result.get("width")
+        height = result.get("height")
+        if (
+            not isinstance(image_id, str)
+            or len(image_id) != 32
+            or any(char not in "0123456789abcdef" for char in image_id)
+            or mime_type not in {"image/png", "image/jpeg", "image/webp"}
+            or type(width) is not int
+            or type(height) is not int
+            or width < 1
+            or height < 1
+        ):
+            return
+        self._recorded_images.add(call_id)
+        self._segments.append(
+            {
+                "kind": "image",
+                "image_id": image_id,
+                "mime_type": mime_type,
+                "width": width,
+                "height": height,
+            }
+        )
 
     # 把子代理名字标到宿主 task 段上，宿主段绝不带 delegation_id
     def _mark_host(self, delegation_id: str, subagent: str) -> None:
@@ -356,6 +398,7 @@ class TurnRecorder:
             self._handle_tool_start(event)
         elif event_type == "tool_result":
             self._handle_tool_finish(event, STATUS_SUCCESS)
+            self._record_generated_image(event)
         elif event_type == "tool_error":
             self._handle_tool_finish(event, STATUS_ERROR)
         elif event_type == "usage":

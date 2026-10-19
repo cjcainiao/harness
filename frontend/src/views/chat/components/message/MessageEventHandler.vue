@@ -33,6 +33,11 @@
                 :streaming="turn.status === 'streaming' && item.id === turn.lastItemId"
                 :expanded="turn.status === 'streaming'"
               />
+              <GeneratedImageMessage
+                v-else-if="item.type === 'image'"
+                :thread-id="turn.threadId"
+                :item="item"
+              />
               <ToolCallMessage
                 v-else-if="item.type === 'tool_group'"
                 :tools="item.tools"
@@ -91,6 +96,7 @@ import type { UploadedFileInfo } from '@/api/uploads'
 import { useChatSessionsStore } from '@/stores/chatSessions'
 import { createUuid } from '@/utils/uuidUtil'
 import ContextCompactionMessage from './ContextCompactionMessage.vue'
+import GeneratedImageMessage from './GeneratedImageMessage.vue'
 import MessageChunk from './MessageChunk.vue'
 import MessageError from './MessageError.vue'
 import MessageLocator from './MessageLocator.vue'

@@ -51,6 +51,31 @@ export interface ToolItem extends DelegationMarks {
   toolCallId?: string
 }
 
+export type ImageAspectRatio = '1:1' | '16:9' | '9:16'
+
+/** 生成中的图片占位 */
+export interface GeneratingImageItem extends DelegationMarks {
+  id: number
+  type: 'image'
+  status: 'generating'
+  toolCallId: string
+  aspectRatio: ImageAspectRatio
+}
+
+/** 已生成的图片 */
+export interface ReadyImageItem extends DelegationMarks {
+  id: number
+  type: 'image'
+  status: 'ready'
+  toolCallId?: string
+  imageId: string
+  mimeType: string
+  width: number
+  height: number
+}
+
+export type ImageItem = GeneratingImageItem | ReadyImageItem
+
 /** 本轮失败时的提示内容 */
 export interface ErrorItem extends DelegationMarks {
   id: number
@@ -67,7 +92,8 @@ export interface CompactionItem extends DelegationMarks {
   durationMs?: number
 }
 
-export type TurnItem = MessageChunkItem | ReasoningItem | ToolItem | CompactionItem | ErrorItem
+export type TurnItem =
+  MessageChunkItem | ReasoningItem | ToolItem | ImageItem | CompactionItem | ErrorItem
 
 /** 工具项还在跑 */
 export function isRunningTool(item: ToolItem): boolean {
@@ -174,6 +200,7 @@ export interface DelegationGroupItem {
 export type DisplayItem =
   | MessageChunkItem
   | ReasoningItem
+  | ImageItem
   | CompactionItem
   | ErrorItem
   | ToolGroupItem

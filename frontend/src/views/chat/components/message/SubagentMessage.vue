@@ -135,7 +135,7 @@ const bodySignature = computed(() =>
 
 function textLength(part: TurnItem): number {
   if (part.type === 'tool') return typeof part.arguments === 'string' ? part.arguments.length : 0
-  if (part.type === 'compaction') return 0
+  if (part.type === 'compaction' || part.type === 'image') return 0
   return part.content.length
 }
 
