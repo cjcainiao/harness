@@ -1,11 +1,15 @@
 # 对话请求结构
 
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.chat.uploads_schema import UploadInfo
 from harness.models.factory import ReasoningEffort
+
+
+# 轮次标识格式
+TURN_ID_PATTERN = r"^(?:[0-9a-f]{32}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$"
 
 
 # 本轮上传附件信息
@@ -19,6 +23,11 @@ class ChatRequest(BaseModel):
 
     message: str = Field(min_length=1, max_length=20_000, description="用户消息")
     thread_id: str | None = Field(default=None, min_length=1, max_length=128, description="会话ID")
+    turn_id: str | None = Field(
+        default=None,
+        pattern=TURN_ID_PATTERN,
+        description="本轮提问标识，重复提交时复用原轮次",
+    )
     attachments: list[ChatAttachment] = Field(default_factory=list, description="本轮上传附件信息")
     knowledge_base_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$", description="本轮选中的知识库标识")
     model_name: str | None = Field(default=None, min_length=1, max_length=100, description="实际模型名称")
@@ -35,3 +44,12 @@ class ChatRequest(BaseModel):
         if self.attachments and self.thread_id is None:
             raise ValueError("携带附件时必须指定 thread_id")
         return self
+
+
+# 开始对话返回的轮次
+class StartedTurn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    thread_id: str = Field(description="所属会话标识")
+    turn_id: str = Field(description="本轮提问标识")
+    status: Literal["streaming", "completed", "failed", "interrupted"] = Field(description="本轮状态")

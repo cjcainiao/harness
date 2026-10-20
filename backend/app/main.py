@@ -8,8 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.exceptions import register_exception_handlers
 from app.gateway import chat_router, config_router, knowledge_router
-from app.services.knowledge.document_service import recover_documents, shutdown_documents
 from app.init_db import initialize_database
+from app.services.chat.stream_service import shutdown_chat_tasks
+from app.services.knowledge.document_service import recover_documents, shutdown_documents
 from harness.agents.memory.checkpointer import shutdown_checkpointer
 from harness.config.app_config import get_app_config
 from harness.core.logger import get_logger, shutdown_logging
@@ -29,6 +30,7 @@ async def lifespan(app: FastAPI):
         await recover_documents()
         yield
     finally:
+        await shutdown_chat_tasks()
         await shutdown_documents()
         logger.info("应用关闭中", app_name=config.system.app_name)
         await shutdown_checkpointer()

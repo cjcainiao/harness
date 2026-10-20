@@ -105,7 +105,8 @@ function getNewThreadId(): string {
 }
 
 const newThreadId = ref(getNewThreadId())
-chatSessions.markHistoryLoaded(newThreadId.value)
+if (!chatSessions.hasPendingStart(newThreadId.value))
+  chatSessions.markHistoryLoaded(newThreadId.value)
 const threadId = computed(() => {
   const id = route.query.thread_id
   return typeof id === 'string' && id.trim() ? id : newThreadId.value
@@ -151,7 +152,8 @@ watch(
     if (typeof id === 'string' && id.trim()) chatSessions.ensureSession(id)
     else if (typeof previousId === 'string' && previousId.trim()) {
       newThreadId.value = getNewThreadId()
-      chatSessions.markHistoryLoaded(newThreadId.value)
+      if (!chatSessions.hasPendingStart(newThreadId.value))
+        chatSessions.markHistoryLoaded(newThreadId.value)
     }
   },
   { immediate: true },

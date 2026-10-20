@@ -33,23 +33,26 @@ export function toChatAttachments(files: UploadedFileInfo[]): ChatAttachment[] {
 
 // 历史轮次状态
 function toTurnStatus(status: string): TurnStatus {
-  if (status === 'completed' || status === 'failed') return status
+  if (status === 'streaming' || status === 'completed' || status === 'failed') return status
   return 'interrupted'
 }
 
 // 历史工具状态
-function toToolStatus(status: TurnItemInfo['status']): ToolItem['status'] {
-  return status === 'success' || status === 'error' ? status : 'error'
+function toToolStatus(status: TurnItemInfo['status'], live: boolean): ToolItem['status'] {
+  if (status === 'success') return status
+  if (live && (status === 'preparing' || status === 'running')) return status
+  return 'error'
 }
 
 // 历史中未完成的压缩按跳过显示
-function toCompactionStatus(status: TurnItemInfo['status']) {
+function toCompactionStatus(status: TurnItemInfo['status'], live: boolean) {
   if (status === 'success' || status === 'error' || status === 'skipped') return status
+  if (live && status === 'running') return status
   return 'skipped' as const
 }
 
 // 用量字段映射
-function toUsage(usage: TurnUsageInfo | null): TurnUsage | undefined {
+export function toUsage(usage: TurnUsageInfo | null): TurnUsage | undefined {
   if (!usage) return undefined
   return {
     inputTokens: usage.input_tokens,
@@ -61,7 +64,7 @@ function toUsage(usage: TurnUsageInfo | null): TurnUsage | undefined {
 }
 
 // 历史渲染段映射
-function toTurnItem(item: TurnItemInfo, index: number): TurnItem {
+function toTurnItem(item: TurnItemInfo, index: number, live: boolean): TurnItem {
   // 委派标记
   const marks = {
     subagent: item.subagent ?? undefined,
@@ -81,7 +84,7 @@ function toTurnItem(item: TurnItemInfo, index: number): TurnItem {
       id: index,
       type: 'tool',
       tool: item.tool ?? '',
-      status: toToolStatus(item.status),
+      status: toToolStatus(item.status, live),
       arguments: item.arguments ?? undefined,
       output: item.output ?? undefined,
       durationMs: item.duration_ms ?? undefined,
@@ -113,7 +116,7 @@ function toTurnItem(item: TurnItemInfo, index: number): TurnItem {
     return {
       id: index,
       type: 'compaction',
-      status: toCompactionStatus(item.status),
+      status: toCompactionStatus(item.status, live),
       durationMs: item.duration_ms ?? undefined,
       ...marks,
     }
@@ -134,6 +137,11 @@ function toTurnItem(item: TurnItemInfo, index: number): TurnItem {
   }
 }
 
+// 历史渲染段列表映射
+export function mapTurnItems(items: TurnItemInfo[], live = false): TurnItem[] {
+  return items.map((item, index) => toTurnItem(item, index, live))
+}
+
 /** 会话内历史轮次列表转成 turn 列表 */
 export function mapTurns(threadId: string, turns: TurnInfo[]): ChatTurn[] {
   return turns.map((turn) => ({
@@ -143,7 +151,7 @@ export function mapTurns(threadId: string, turns: TurnInfo[]): ChatTurn[] {
     attachments: toChatAttachments(turn.question.attachments),
     createdAt: toTimestamp(turn.created_at),
     status: toTurnStatus(turn.status),
-    items: turn.items.map(toTurnItem),
+    items: mapTurnItems(turn.items, turn.status === 'streaming'),
     followUpQuestions: turn.follow_up_questions?.slice() ?? [],
     usage: toUsage(turn.usage),
   }))

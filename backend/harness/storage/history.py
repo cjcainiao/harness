@@ -124,6 +124,14 @@ ORDER BY seq DESC
 LIMIT ?
 """
 
+# 按轮次标识读取单轮
+SQL_SELECT_TURN = """
+SELECT id AS turn_id, thread_id, seq, question, status, created_at,
+       items_json, follow_up_questions_json, usage_json
+FROM chat_turn
+WHERE id = ?
+"""
+
 # 推荐输入只读取当前会话最近已完成的轮次
 SQL_SELECT_RECENT_COMPLETED_TURNS = """
 SELECT question, items_json
@@ -164,6 +172,16 @@ def _question_from_json(value: str) -> dict[str, Any]:
     return {"content": value, "attachments": []}
 
 
+# 解析轮次记录中的 JSON 字段
+def _decode_turn(turn: dict[str, Any]) -> dict[str, Any]:
+    turn["question"] = _question_from_json(turn["question"])
+    turn["items"] = json.loads(turn.pop("items_json"))
+    turn["follow_up_questions"] = json.loads(turn.pop("follow_up_questions_json"))
+    usage_json = turn.pop("usage_json")
+    turn["usage"] = json.loads(usage_json) if usage_json else None
+    return turn
+
+
 # 读用量计数，非法值按 0 算
 def _count(usage: dict[str, Any] | None, key: str) -> int:
     value = usage.get(key) if isinstance(usage, dict) else None
@@ -174,9 +192,10 @@ def _count(usage: dict[str, Any] | None, key: str) -> int:
 
 # 建会话并开一轮
 def start_turn(
-    thread_id: str, question: str, attachments: Sequence[Mapping[str, Any]] = ()
+    thread_id: str, question: str, attachments: Sequence[Mapping[str, Any]] = (),
+    *, turn_id: str | None = None,
 ) -> str:
-    turn_id = uuid.uuid4().hex
+    turn_id = turn_id or uuid.uuid4().hex
     now = _utc_now()
 
     conn = connect_history_db()
@@ -333,17 +352,17 @@ async def list_turns(
         async with conn.execute(sql, params) as cursor:
             rows = await cursor.fetchall()
 
-    turns: list[dict[str, Any]] = []
-    for row in reversed(rows):
-        turn = dict(row)
-        # 历史 JSON 字段解析
-        turn["question"] = _question_from_json(turn["question"])
-        turn["items"] = json.loads(turn.pop("items_json"))
-        turn["follow_up_questions"] = json.loads(turn.pop("follow_up_questions_json"))
-        usage_json = turn.pop("usage_json")
-        turn["usage"] = json.loads(usage_json) if usage_json else None
-        turns.append(turn)
-    return turns
+    return [_decode_turn(dict(row)) for row in reversed(rows)]
+
+
+# 按标识读取单轮及其渲染段
+async def get_turn(turn_id: str) -> dict[str, Any] | None:
+    async with open_history_db() as conn:
+        async with conn.execute(SQL_SELECT_TURN, (turn_id,)) as cursor:
+            row = await cursor.fetchone()
+    if row is None:
+        return None
+    return _decode_turn(dict(row))
 
 
 # 读取当前会话最近已完成的旧问答，返回顺序从旧到新

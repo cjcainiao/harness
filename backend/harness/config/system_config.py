@@ -28,5 +28,6 @@ class systemConfig(BaseModel):
     log_console: bool | None = Field(default=None, description="是否输出到控制台，留空则按 env 自动（prod 关闭）")
     db_path: str = Field(default="data/harness.db", min_length=1, description="数据库文件路径，历史、检查点和知识库共用，相对路径按后端项目根解析")
     db_busy_timeout_ms: int = Field(default=5000, ge=0, description="写冲突时的锁等待上限（毫秒），0 表示不等待")
+    stream_progress_flush_seconds: float = Field(default=0.5, gt=0, description="流式回复进度写入数据库的最长间隔秒数")
     workspace_dir: str = Field(default="data/workspaces", min_length=1, description="会话工作空间根目录，相对路径按后端项目根解析")
     upload_max_bytes: int = Field(default=20 * 1024 * 1024, ge=1, description="单个上传文件的最大字节数")

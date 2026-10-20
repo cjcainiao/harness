@@ -1,15 +1,23 @@
 import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
-import { streamChat } from '@/api/chat'
+import { cancelChatTurn, createChatTurn, subscribeChatTurn } from '@/api/chat'
 import type { ChatSendRequest, ChatStreamRequest } from '@/api/chat'
 import type { UploadedFileInfo } from '@/api/uploads'
 import { fetchThreadTurns, fetchThreads } from '@/api/history'
 import type { ThreadCursor, ThreadInfo, TurnInfo } from '@/api/history'
 import {
   mapTurns,
+  mapTurnItems,
   toChatAttachments,
   toTimestamp,
+  toUsage,
 } from '@/views/chat/components/message/historyMapper'
+import type { TurnItemInfo, TurnUsageInfo } from '@/api/history'
+import {
+  readSessionStorage,
+  removeSessionStorage,
+  writeSessionStorage,
+} from '@/utils/sessionStorageUtil'
 import { createTurnRuntime, isRunningTool } from '@/views/chat/components/message/messageTurn'
 import type {
   ChatTurn,
@@ -23,6 +31,7 @@ import type {
   TurnUsage,
 } from '@/views/chat/components/message/messageTurn'
 import { createUuid } from '@/utils/uuidUtil'
+import { RequestError } from '@/utils/requestUtil'
 
 export interface ChatSession {
   id: string
@@ -42,6 +51,64 @@ const TURN_PAGE_SIZE = 20
 
 // 同时接收流式回复的会话数上限
 const MAX_CONCURRENT_STREAMS = 3
+// 开始和重连的退避间隔
+const STREAM_RETRY_INITIAL_MS = 500
+const STREAM_RETRY_MAX_MS = 5000
+const STREAM_RECONNECT_POLL_MS = 100
+
+// 待服务端确认的轮次请求
+const PENDING_STARTS_KEY = 'harness:pending-chat-turns'
+
+interface PendingStart {
+  turnId: string
+  request: ChatStreamRequest
+  cancelRequested?: boolean
+}
+
+// 读取待确认请求
+function pendingStarts(): PendingStart[] {
+  const value = readSessionStorage<PendingStart[]>(PENDING_STARTS_KEY)
+  return Array.isArray(value) ? value : []
+}
+
+// 保存待确认请求
+function savePendingStart(turnId: string, request: ChatStreamRequest): void {
+  writeSessionStorage(PENDING_STARTS_KEY, [
+    ...pendingStarts().filter((entry) => entry.turnId !== turnId),
+    { turnId, request },
+  ])
+}
+
+// 清除已确认请求
+function clearPendingStart(turnId: string): void {
+  const remaining = pendingStarts().filter((entry) => entry.turnId !== turnId)
+  if (remaining.length) writeSessionStorage(PENDING_STARTS_KEY, remaining)
+  else removeSessionStorage(PENDING_STARTS_KEY)
+}
+
+// 记录停止意图供刷新后恢复
+function markPendingCancel(turnId: string): void {
+  const entries = pendingStarts()
+  const pending = entries.find((entry) => entry.turnId === turnId)
+  if (pending) {
+    pending.cancelRequested = true
+    writeSessionStorage(PENDING_STARTS_KEY, entries)
+  }
+}
+
+// 等待重试或主动中断
+function waitForRetry(signal: AbortSignal, delay: number): Promise<void> {
+  if (signal.aborted) return Promise.resolve()
+  return new Promise((resolve) => {
+    const finish = () => {
+      window.clearTimeout(timer)
+      signal.removeEventListener('abort', finish)
+      resolve()
+    }
+    const timer = window.setTimeout(finish, delay)
+    signal.addEventListener('abort', finish, { once: true })
+  })
+}
 
 interface MessageEvent {
   type: string
@@ -162,6 +229,8 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
   const runtimes = new Map<string, TurnRuntime>()
   // 每轮未完成的请求
   const activeStreams = new Map<string, AbortController>()
+  // 主动停止的轮次
+  const cancelRequested = new Set<string>()
   // 每轮属于哪个会话
   const turnThreads = new Map<string, string>()
   // 已经读过服务端历史的会话，切回来不再重复拉
@@ -235,7 +304,9 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
       if (threadId !== id) continue
       turnThreads.delete(turnId)
       runtimes.delete(turnId)
+      activeStreams.get(turnId)?.abort()
       activeStreams.delete(turnId)
+      clearPendingStart(turnId)
     }
   }
 
@@ -364,6 +435,11 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     return historyLoaded.has(id)
   }
 
+  // 会话内是否有待确认请求
+  function hasPendingStart(id: string): boolean {
+    return pendingStarts().some((entry) => entry.request.thread_id === id)
+  }
+
   // 本地生成的会话不用拉历史
   function markHistoryLoaded(id: string): void {
     historyLoaded.add(id)
@@ -387,13 +463,53 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     markHistoryLoaded(id)
     // 本地已提问但服务端还没有的轮次接在历史后面，正在流式的不能丢
     const pending = getTurns(id).filter((turn) => !page?.some((item) => item.turn_id === turn.id))
+    const pendingStartsForThread = pendingStarts().filter((entry) => entry.request.thread_id === id)
     if (!page) {
       turnsEnded.value[id] = true
-      return pending
+      for (const entry of pendingStartsForThread) {
+        if (entry.cancelRequested) cancelRequested.add(entry.turnId)
+        if (!findTurn(entry.turnId))
+          startTurn(id, entry.request.message, {
+            id: entry.turnId,
+            attachments: entry.request.attachments,
+          })
+        void runChatTurn(entry.turnId, entry.request)
+      }
+      return getTurns(id)
     }
     rememberTurnPage(id, page)
-    const history = [...mapTurns(id, page), ...pending]
+    const serverTurns = mapTurns(id, page).map((turn) => {
+      const live = getTurns(id).find((item) => item.id === turn.id)
+      return live?.status === 'streaming' && activeStreams.has(turn.id) ? live : turn
+    })
+    const history = [...serverTurns, ...pending]
     setTurns(id, history)
+    for (const entry of pendingStartsForThread) {
+      const stored = history.find((turn) => turn.id === entry.turnId)
+      if (stored && (stored.status === 'failed' || stored.status === 'interrupted')) {
+        clearPendingStart(entry.turnId)
+      }
+    }
+    const lastTurn = history[history.length - 1]
+    for (const turn of history) {
+      if (turn.status !== 'streaming' && !(turn === lastTurn && turn.status === 'completed'))
+        continue
+      if (activeStreams.has(turn.id)) continue
+      const pendingStart = pendingStartsForThread.find((entry) => entry.turnId === turn.id)
+      if (pendingStart) {
+        if (pendingStart.cancelRequested) cancelRequested.add(turn.id)
+        void runChatTurn(turn.id, pendingStart.request)
+      } else void runChatTurn(turn.id)
+    }
+    for (const entry of pendingStartsForThread) {
+      if (history.some((turn) => turn.id === entry.turnId)) continue
+      if (entry.cancelRequested) cancelRequested.add(entry.turnId)
+      startTurn(id, entry.request.message, {
+        id: entry.turnId,
+        attachments: entry.request.attachments,
+      })
+      void runChatTurn(entry.turnId, entry.request)
+    }
     return history
   }
 
@@ -972,10 +1088,88 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     syncResponding(turn.threadId)
   }
 
+  // 恢复轮次快照
+  function restoreSnapshot(turn: ChatTurn, event: MessageEvent): void {
+    if (!Array.isArray(event.items)) return
+    const mapped = mapTurnItems(event.items as TurnItemInfo[], event.status === 'streaming')
+    const mainItems: TurnItem[] = []
+    const delegated = new Map<string, { subagent: string; items: TurnItem[] }>()
+    for (const item of mapped) {
+      if (!item.delegationId) {
+        mainItems.push(item)
+        continue
+      }
+      const bucket = delegated.get(item.delegationId) ?? {
+        subagent: item.subagent ?? '',
+        items: [],
+      }
+      bucket.items.push(item)
+      delegated.set(item.delegationId, bucket)
+    }
+    turn.usage = toUsage((event.usage ?? null) as TurnUsageInfo | null)
+    if (Array.isArray(event.questions)) {
+      turn.followUpQuestions = event.questions.filter(
+        (item): item is string => typeof item === 'string',
+      )
+    }
+    if (
+      event.status === 'completed' ||
+      event.status === 'failed' ||
+      event.status === 'interrupted'
+    ) {
+      turn.status = event.status
+    } else {
+      turn.status = 'streaming'
+    }
+    const runtime = createTurnRuntime(mainItems)
+    runtime.nextItemId = mapped.reduce(
+      (next, item) => Math.max(next, item.id + 1),
+      runtime.nextItemId,
+    )
+    const visibleItems: TurnItem[] = []
+    for (const item of mainItems) {
+      visibleItems.push(item)
+      if (event.status === 'streaming' && item.type === 'compaction' && item.status === 'running') {
+        runtime.compacting = true
+        runtime.activeCompactionItemId = item.id
+      }
+      if (
+        event.status === 'streaming' &&
+        item.type === 'tool' &&
+        item.tool === 'generate_image' &&
+        isRunningTool(item) &&
+        item.toolCallId
+      ) {
+        visibleItems.push({
+          id: runtime.nextItemId++,
+          type: 'image',
+          status: 'generating',
+          toolCallId: item.toolCallId,
+          aspectRatio: readImageAspectRatio(item.arguments),
+        })
+      }
+    }
+    turn.items = visibleItems
+    for (const [id, bucket] of delegated) {
+      runtime.delegations.set(id, {
+        subagent: bucket.subagent,
+        items: reactive(bucket.items),
+        runtime: createTurnRuntime(bucket.items),
+      })
+    }
+    runtimes.set(turn.id, runtime)
+    syncResponding(turn.threadId)
+    bumpTick(turn.threadId)
+  }
+
   // SSE 事件按轮次标识找到所属会话再写入，后台会话照收
   function handleEvent(value: unknown, turnId: string): boolean {
     if (!isMessageEvent(value)) return false
     const turn = findTurn(turnId)
+    if (turn && value.type === 'turn_snapshot') {
+      restoreSnapshot(turn, value)
+      return true
+    }
     const runtime = turn && runtimes.get(turn.id)
     if (!turn || !runtime) return false
     // 回复完成后，仍接收同一轮的推荐和最终结束事件
@@ -1060,24 +1254,61 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     return true
   }
 
-  // 请求后端，事件只写入本次 turn
-  async function runChatTurn(turnId: string, request: ChatStreamRequest): Promise<void> {
+  // 订阅轮次进度
+  async function runChatTurn(turnId: string, request?: ChatStreamRequest): Promise<void> {
+    if (activeStreams.has(turnId)) return
     const controller = new AbortController()
     activeStreams.set(turnId, controller)
     try {
-      await streamChat(request, {
-        signal: controller.signal,
-        onEvent: (event) => handleEvent(event, turnId),
-        onClose: (completed) => {
-          // 没收到结束事件说明连接被截断
-          if (!completed) handleEvent({ type: 'interrupted' }, turnId)
-        },
-      })
+      if (request) {
+        let delay = STREAM_RETRY_INITIAL_MS
+        while (!controller.signal.aborted || cancelRequested.has(turnId)) {
+          try {
+            await createChatTurn(request)
+            break
+          } catch (error) {
+            if (error instanceof RequestError && error.status && error.status < 500) throw error
+            if (controller.signal.aborted && cancelRequested.has(turnId)) {
+              await new Promise<void>((resolve) => window.setTimeout(resolve, delay))
+            } else {
+              await waitForRetry(controller.signal, delay)
+            }
+            delay = Math.min(delay * 2, STREAM_RETRY_MAX_MS)
+            if (controller.signal.aborted && !cancelRequested.has(turnId)) return
+          }
+        }
+        clearPendingStart(turnId)
+      }
+      if (cancelRequested.has(turnId)) {
+        await cancelChatTurn(turnId)
+        return
+      }
+      let delay = STREAM_RETRY_INITIAL_MS
+      while (!controller.signal.aborted) {
+        let completed = false
+        try {
+          await subscribeChatTurn(turnId, {
+            signal: controller.signal,
+            onEvent: (event) => handleEvent(event, turnId),
+            onClose: (done) => {
+              completed = done
+            },
+          })
+        } catch {
+          // 网络暂断后重订阅
+        }
+        if (completed || controller.signal.aborted) break
+        await waitForRetry(controller.signal, delay)
+        delay = Math.min(delay * 2, STREAM_RETRY_MAX_MS)
+      }
     } catch {
-      if (!controller.signal.aborted) handleEvent({ type: 'error', message: '请求失败' }, turnId)
+      clearPendingStart(turnId)
+      if (!controller.signal.aborted)
+        handleEvent({ type: 'error', message: '开始对话失败' }, turnId)
     } finally {
       activeStreams.delete(turnId)
-      const threadId = turnThreads.get(turnId) ?? request.thread_id
+      cancelRequested.delete(turnId)
+      const threadId = turnThreads.get(turnId) ?? request?.thread_id
       if (threadId) bumpTick(threadId)
     }
   }
@@ -1089,12 +1320,15 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     options: { attachments?: UploadedFileInfo[]; request?: ChatSendRequest } = {},
   ): string {
     const turnId = startTurn(threadId, question, options)
-    void runChatTurn(turnId, {
+    const request: ChatStreamRequest = {
       ...options.request,
       message: question,
       thread_id: threadId,
+      turn_id: turnId,
       attachments: options.attachments ?? [],
-    })
+    }
+    savePendingStart(turnId, request)
+    void runChatTurn(turnId, request)
     return turnId
   }
 
@@ -1102,7 +1336,28 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
   function stopThreadTurns(threadId: string): void {
     for (const turn of getTurns(threadId)) {
       if (turn.status !== 'streaming') continue
+      cancelRequested.add(turn.id)
+      markPendingCancel(turn.id)
+      void cancelChatTurn(turn.id).catch(() => {
+        if (pendingStarts().some((entry) => entry.turnId === turn.id)) return
+        const current = findTurn(turn.id)
+        if (!current || current.status !== 'interrupted') return
+        current.status = 'streaming'
+        cancelRequested.delete(turn.id)
+        syncResponding(threadId)
+        pendingNotice.value = { threadId, message: '停止失败，回复仍在后台进行' }
+        const reconnect = () => {
+          if (!findTurn(turn.id)) return
+          if (activeStreams.has(turn.id)) {
+            window.setTimeout(reconnect, STREAM_RECONNECT_POLL_MS)
+          } else {
+            void runChatTurn(turn.id)
+          }
+        }
+        reconnect()
+      })
       activeStreams.get(turn.id)?.abort()
+      if (!runtimes.has(turn.id)) runtimes.set(turn.id, createTurnRuntime(turn.items))
       handleEvent({ type: 'interrupted' }, turn.id)
     }
   }
@@ -1128,6 +1383,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
     loadThreads,
     loadMoreThreads,
     isHistoryLoaded,
+    hasPendingStart,
     markHistoryLoaded,
     loadHistory,
     loadMoreHistory,

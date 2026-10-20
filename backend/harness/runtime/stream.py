@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
+import time
 import uuid
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
@@ -87,6 +88,7 @@ async def stream_agent(
     reasoning_effort: ReasoningEffort | None = None,
     *,
     thread_id: str | None = None,
+    turn_id: str | None = None,
     uploaded_files: Sequence[UploadedFileInfo] = (),
     knowledge_base_id: str | None = None,
     tools: Sequence[Tool] | None = None,
@@ -104,7 +106,9 @@ async def stream_agent(
     }
 
     recorder = TurnRecorder()
-    turn_id = _start_turn(thread_id, message, uploaded_files)
+    turn_id = turn_id or _start_turn(thread_id, message, uploaded_files)
+    last_progress_save = time.monotonic()
+    progress_flush_seconds = get_app_config().system.stream_progress_flush_seconds
 
     # 覆盖轮次进度或收尾状态，写库失败不打断回复
     def save(status: str) -> bool:
@@ -117,11 +121,17 @@ async def stream_agent(
             logger.warning("历史写入失败", turn_id=turn_id, error=str(error))
             return False
 
-    # 事件先攒段，到关键节点落库，断开时也能保住已有内容
+    # 事件分段并定期落库
     def track(event: dict[str, Any]) -> None:
+        nonlocal last_progress_save
         recorder.feed(event)
-        if event.get("type") in MILESTONE_TYPES:
+        now = time.monotonic()
+        if (
+            event.get("type") in MILESTONE_TYPES
+            or now - last_progress_save >= progress_flush_seconds
+        ):
             save(history.TURN_STREAMING)
+            last_progress_save = now
 
     # 只有代理完整跑完才算完成；取消或控制流中断保留为中断
     final_status = history.TURN_INTERRUPTED
@@ -233,7 +243,7 @@ async def stream_agent(
         yield _encode_sse({"type": "done", "thread_id": thread_id})
 
     except asyncio.CancelledError:
-        logger.info("客户端已断开流式连接", thread_id=thread_id)
+        logger.info("对话任务已取消", thread_id=thread_id)
         raise
     except GraphBubbleUp:
         # 保留 LangGraph 的中断和恢复语义

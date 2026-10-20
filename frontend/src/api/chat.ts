@@ -1,5 +1,6 @@
 // chat 页面模块接口
 import sseUtil, { type SseError } from '@/utils/sseUtil'
+import requestUtil, { type ApiResult } from '@/utils/requestUtil'
 import type { UploadedFileInfo } from '@/api/uploads'
 
 /** 流式对话请求体 */
@@ -8,6 +9,8 @@ export interface ChatStreamRequest {
   message: string
   // 会话标识
   thread_id?: string
+  // 本轮标识，重复提交时复用
+  turn_id?: string
   // 本轮已上传附件信息
   attachments?: UploadedFileInfo[]
   // 本轮选中的知识库
@@ -21,7 +24,17 @@ export interface ChatStreamRequest {
 }
 
 /** 除消息内容与会话标识外的对话参数 */
-export type ChatSendRequest = Omit<ChatStreamRequest, 'message' | 'thread_id' | 'attachments'>
+export type ChatSendRequest = Omit<
+  ChatStreamRequest,
+  'message' | 'thread_id' | 'turn_id' | 'attachments'
+>
+
+/** 后台轮次标识及状态 */
+export interface StartedTurn {
+  thread_id: string
+  turn_id: string
+  status: 'streaming' | 'completed' | 'failed' | 'interrupted'
+}
 
 /** 单次模型响应的令牌用量 */
 export interface ChatUsage {
@@ -205,6 +218,20 @@ export interface CustomStreamEvent extends ChatStreamEventBase {
   data?: unknown
 }
 
+/** 重连时的完整轮次进度 */
+export interface TurnSnapshotEvent extends ChatStreamEventBase {
+  type: 'turn_snapshot'
+  items: import('@/api/history').TurnItemInfo[]
+  usage: import('@/api/history').TurnUsageInfo | null
+  status: StartedTurn['status']
+  questions: string[]
+}
+
+/** 轮次中断事件 */
+export interface InterruptedEvent extends ChatStreamEventBase {
+  type: 'interrupted'
+}
+
 export type ChatStreamEvent =
   | MessageChunkEvent
   | ReasoningChunkEvent
@@ -221,6 +248,8 @@ export type ChatStreamEvent =
   | ErrorEvent
   | KnowledgeSourcesEvent
   | CustomStreamEvent
+  | TurnSnapshotEvent
+  | InterruptedEvent
 
 /** 流式对话回调 */
 export interface ChatStreamHandlers {
@@ -251,6 +280,8 @@ const CHAT_STREAM_EVENT_TYPES = [
   'error',
   'knowledge_sources',
   'custom',
+  'turn_snapshot',
+  'interrupted',
 ] as const
 
 // 过滤非对象和无法识别的事件负载
@@ -281,4 +312,40 @@ export function streamChat(
     onClose: handlers.onClose,
     onError: handlers.onError,
   })
+}
+
+/** 创建后台运行的轮次，相同 turn_id 只执行一次 */
+export async function createChatTurn(request: ChatStreamRequest): Promise<StartedTurn> {
+  const result = await requestUtil.request<ApiResult<StartedTurn>, ChatStreamRequest>({
+    method: 'POST',
+    url: '/api/chat/turns',
+    data: request,
+  })
+  if (result.code !== 200 || !result.data) throw new Error(result.message || '开始对话失败')
+  return result.data
+}
+
+/** 订阅一轮的快照和后续事件，断线后可重新订阅 */
+export function subscribeChatTurn(turnId: string, handlers: ChatStreamHandlers): Promise<void> {
+  return sseUtil.request<void, ChatStreamEvent>({
+    url: `/api/chat/turns/${encodeURIComponent(turnId)}/events`,
+    method: 'GET',
+    signal: handlers.signal,
+    openWhenHidden: true,
+    onMessage: (message) => {
+      if (isChatStreamEvent(message.data)) handlers.onEvent(message.data)
+    },
+    onClose: handlers.onClose,
+    onError: handlers.onError,
+  })
+}
+
+/** 停止后台轮次 */
+export async function cancelChatTurn(turnId: string): Promise<StartedTurn> {
+  const result = await requestUtil.request<ApiResult<StartedTurn>>({
+    method: 'POST',
+    url: `/api/chat/turns/${encodeURIComponent(turnId)}/cancel`,
+  })
+  if (result.code !== 200 || !result.data) throw new Error(result.message || '停止回复失败')
+  return result.data
 }
