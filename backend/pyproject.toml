@@ -25,4 +25,7 @@ dependencies = [
     "structlog>=26.1.0",
     "tzdata>=2026.4",
     "uvicorn[standard]>=0.53.0",
+    "sqlite-vec==0.1.9",
+    "jieba>=0.42.1",
+    "langchain-text-splitters>=1.1.3",
 ]

@@ -9,6 +9,7 @@
 - `app/` 是 Web 外壳，`harness/` 是独立框架库
 - 依赖只允许 `app -> harness` 单向，`harness/` 内禁止 import `app/` 和 FastAPI 的东西
 - `harness/` 各包的 `__init__.py` 默认只写一行包说明；只聚合同名类的包（如 `middlewares`）可以导出，但不得 re-export 会拉起整条依赖链的模块（`runtime/__init__.py` 导 `stream` 就绕回 `storage.db` 成了环）
+- `harness/rag/document/` 放文档解析、切片、索引和文档数据访问；`harness/rag/retrieval/` 放检索和排序；两条流程共用的向量请求、数据库连接与表结构留在 `harness/rag/` 根层
 - 路由统一挂在 `system.api_prefix`（默认 /api）下，`/health` 除外
 - 普通 JSON 响应用 `app.schemas.result.Result` 包装；流式对话和文件预览使用对应的响应类型
 
@@ -34,7 +35,7 @@
 - `config.yaml` 不入版本控制且含真实密钥，核对只按行读指定键，不整文件 diff、不打印密钥行
 
 ## 数据库
-- 历史与检查点共用 `system.db_path`（默认 `data/harness.db`），`journal_mode = WAL`；历史库每条连接由 `session_pragmas()` 统一设置 `busy_timeout`
+- 历史、检查点和知识库共用 `system.db_path`（默认 `data/harness.db`），`journal_mode = WAL`；历史库每条连接由 `session_pragmas()` 统一设置 `busy_timeout`
 - 库文件的相对路径统一由 `harness/runtime/db_path.py:resolve_db_path` 按后端项目根展开，不受启动目录影响
 - 数据库启动入口在 `app/init_db.py`，集中初始化应用表 `chat_thread`、`chat_turn`、`slash_command` 和检查点表 `checkpoints`、`writes`
 - 历史表 DDL 唯一事实源在 `harness/storage/schema.py`，语句全部幂等，启动时执行一遍 `SCHEMA_SCRIPT`

@@ -101,6 +101,14 @@ function toTurnItem(item: TurnItemInfo, index: number): TurnItem {
       ...marks,
     }
   }
+  if (item.kind === 'knowledge_sources') {
+    return {
+      id: index,
+      type: 'knowledge_sources',
+      sources: item.sources ?? [],
+      ...marks,
+    }
+  }
   if (item.kind === 'compaction') {
     return {
       id: index,

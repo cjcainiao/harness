@@ -10,6 +10,8 @@ export interface ChatStreamRequest {
   thread_id?: string
   // 本轮已上传附件信息
   attachments?: UploadedFileInfo[]
+  // 本轮选中的知识库
+  knowledge_base_id?: string
   // 实际模型名称
   model_name?: string
   // 是否启用推理
@@ -189,6 +191,13 @@ export interface ErrorEvent extends ChatStreamEventBase {
   message: string
 }
 
+/** 本轮知识库引用 */
+export interface KnowledgeSourcesEvent extends ChatStreamEventBase {
+  type: 'knowledge_sources'
+  base_id: string
+  sources: import('@/api/knowledge').KnowledgeSource[]
+}
+
 /** 未识别的自定义事件 */
 export interface CustomStreamEvent extends ChatStreamEventBase {
   type: 'custom'
@@ -210,6 +219,7 @@ export type ChatStreamEvent =
   | FollowUpQuestionsEvent
   | DoneEvent
   | ErrorEvent
+  | KnowledgeSourcesEvent
   | CustomStreamEvent
 
 /** 流式对话回调 */
@@ -239,6 +249,7 @@ const CHAT_STREAM_EVENT_TYPES = [
   'follow_up_questions',
   'done',
   'error',
+  'knowledge_sources',
   'custom',
 ] as const
 

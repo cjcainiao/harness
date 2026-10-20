@@ -30,6 +30,10 @@
           <Search :size="16" />
           <span>搜索</span>
         </button>
+        <button class="menu-item" type="button" @click="router.push('/knowledge')">
+          <BookOpen :size="16" />
+          <span>知识库</span>
+        </button>
       </nav>
     </header>
     <!-- 中间：会话/项目历史列表，可滚动 -->
@@ -117,6 +121,7 @@ import type { Component } from 'vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   ArrowUpRight,
+  BookOpen,
   Check,
   PanelLeftClose,
   Search,

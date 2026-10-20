@@ -15,7 +15,7 @@
     </summary>
 
     <div v-if="open" ref="body" class="delegation-body">
-      <div v-for="item in parts" :key="item.id" class="delegation-item">
+      <div v-for="item in visibleParts" :key="item.id" class="delegation-item">
         <details
           v-if="item.type === 'message_chunk'"
           class="delegation-response"
@@ -47,6 +47,7 @@
           <div v-if="expandedResponses.has(item.id)" class="delegation-response-content">
             <MessageChunk
               :content="item.content"
+              :sources="citationSources"
               :streaming="isRunning && item.id === lastPartId"
             />
           </div>
@@ -83,6 +84,10 @@ import { isRunningTool } from './messageTurn'
 import type { ToolItem, TurnItem } from './messageTurn'
 
 const props = defineProps<{ host: ToolItem; parts: TurnItem[] }>()
+const visibleParts = computed(() => props.parts.filter((part) => part.type !== 'knowledge_sources'))
+const citationSources = computed(
+  () => props.parts.find((part) => part.type === 'knowledge_sources')?.sources ?? [],
+)
 
 // 徽标只认子代理名字，同名永远同一张
 const avatar = computed(() => subagentAvatar(props.host.subagent ?? ''))
@@ -135,7 +140,8 @@ const bodySignature = computed(() =>
 
 function textLength(part: TurnItem): number {
   if (part.type === 'tool') return typeof part.arguments === 'string' ? part.arguments.length : 0
-  if (part.type === 'compaction' || part.type === 'image') return 0
+  if (part.type === 'compaction' || part.type === 'image' || part.type === 'knowledge_sources')
+    return 0
   return part.content.length
 }
 

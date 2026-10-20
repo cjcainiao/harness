@@ -1,10 +1,13 @@
 # 数据库表初始化
 
+import asyncio
+
 from app.schemas.chat.slash_schema import init_slash_commands
 
 from harness.agents.memory.checkpointer import init_checkpointer
 from harness.config.app_config import get_app_config
 from harness.core.logger import get_logger
+from harness.rag.store import init_rag_db
 from harness.storage import history
 from harness.storage.db import init_history_db
 
@@ -15,6 +18,8 @@ logger = get_logger(__name__)
 async def initialize_database() -> None:
     # 历史表：chat_thread、chat_turn
     db_path = await init_history_db()
+    # 知识库表
+    await asyncio.to_thread(init_rag_db)
 
     # 斜杠命令表与初始数据
     await init_slash_commands(db_path)

@@ -83,6 +83,12 @@ export interface ErrorItem extends DelegationMarks {
   content: string
 }
 
+export interface KnowledgeSourcesItem extends DelegationMarks {
+  id: number
+  type: 'knowledge_sources'
+  sources: import('@/api/knowledge').KnowledgeSource[]
+}
+
 /** 上下文压缩段 */
 export interface CompactionItem extends DelegationMarks {
   id: number
@@ -93,7 +99,13 @@ export interface CompactionItem extends DelegationMarks {
 }
 
 export type TurnItem =
-  MessageChunkItem | ReasoningItem | ToolItem | ImageItem | CompactionItem | ErrorItem
+  | MessageChunkItem
+  | ReasoningItem
+  | ToolItem
+  | ImageItem
+  | KnowledgeSourcesItem
+  | CompactionItem
+  | ErrorItem
 
 /** 工具项还在跑 */
 export function isRunningTool(item: ToolItem): boolean {
@@ -203,6 +215,7 @@ export type DisplayItem =
   | ImageItem
   | CompactionItem
   | ErrorItem
+  | KnowledgeSourcesItem
   | ToolGroupItem
   | DelegationGroupItem
 

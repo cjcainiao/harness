@@ -178,6 +178,108 @@
               </div>
             </div>
           </ElPopover>
+          <ElPopover
+            v-model:visible="isKnowledgeMenuOpen"
+            placement="top-start"
+            trigger="click"
+            role="dialog"
+            :width="260"
+            :offset="10"
+            :show-arrow="true"
+            :hide-after="0"
+            :persistent="false"
+            :popper-style="{
+              padding: '6px',
+              borderRadius: '9px',
+              maxWidth: 'calc(100vw - 16px)',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)',
+            }"
+          >
+            <template #reference>
+              <button
+                ref="knowledgeTrigger"
+                class="tool-btn knowledge-trigger"
+                :class="{ 'is-active': selectedKnowledgeBase }"
+                type="button"
+                aria-haspopup="dialog"
+                :aria-expanded="isKnowledgeMenuOpen"
+                :aria-label="`知识库：${selectedKnowledgeBase?.name ?? '未使用'}`"
+                @pointerenter="showKnowledgeTooltip"
+                @pointerleave="hideKnowledgeTooltip"
+                @click="hideKnowledgeTooltip"
+              >
+                <BookOpenText :size="14" :stroke-width="1.8" aria-hidden="true" />
+                <span class="knowledge-trigger-name">{{
+                  selectedKnowledgeBase?.name ?? '知识库'
+                }}</span>
+                <ChevronDown class="knowledge-chevron" :size="13" aria-hidden="true" />
+              </button>
+            </template>
+            <div
+              class="knowledge-menu"
+              aria-label="选择知识库"
+              @keydown.esc.stop.prevent="isKnowledgeMenuOpen = false"
+            >
+              <div class="menu-heading">知识库</div>
+              <button
+                class="menu-option"
+                :class="{ 'is-selected': !selectedKnowledgeBaseId }"
+                type="button"
+                :aria-pressed="!selectedKnowledgeBaseId"
+                @click="selectKnowledgeBase('')"
+              >
+                <span>不使用知识库</span>
+                <Check v-if="!selectedKnowledgeBaseId" :size="15" aria-hidden="true" />
+              </button>
+              <button
+                v-for="base in knowledgeBases"
+                :key="base.id"
+                class="menu-option"
+                :class="{ 'is-selected': selectedKnowledgeBaseId === base.id }"
+                type="button"
+                :aria-pressed="selectedKnowledgeBaseId === base.id"
+                @click="selectKnowledgeBase(base.id)"
+              >
+                <span class="knowledge-option-name">{{ base.name }}</span>
+                <Check v-if="selectedKnowledgeBaseId === base.id" :size="15" aria-hidden="true" />
+              </button>
+              <div class="menu-divider" />
+              <router-link
+                class="knowledge-manage-link"
+                to="/knowledge"
+                @click="isKnowledgeMenuOpen = false"
+              >
+                <Settings2 :size="14" :stroke-width="1.8" aria-hidden="true" /> 管理知识库
+              </router-link>
+            </div>
+          </ElPopover>
+          <ElTooltip
+            v-if="knowledgeTrigger"
+            :visible="knowledgeTooltipVisible"
+            :virtual-ref="knowledgeTrigger"
+            virtual-triggering
+            effect="light"
+            placement="top"
+            :offset="10"
+            :show-arrow="false"
+            :persistent="false"
+            :disabled="!canHover || isKnowledgeMenuOpen"
+            :popper-style="{
+              padding: '0',
+              maxWidth: 'min(260px, calc(100vw - 24px))',
+              border: '1px solid #e5e7eb',
+              borderRadius: '10px',
+              boxShadow: '0 8px 28px rgba(0, 0, 0, 0.12)',
+            }"
+          >
+            <template #content>
+              <div class="knowledge-tooltip">
+                <span class="knowledge-tooltip-label">当前知识库</span>
+                <strong>{{ selectedKnowledgeBase?.name ?? '未使用知识库' }}</strong>
+                <span class="knowledge-tooltip-hint">点击切换知识库</span>
+              </div>
+            </template>
+          </ElTooltip>
         </div>
         <div class="toolbar-right">
           <div class="model-picker" @keydown.esc.stop.prevent="closeModelMenu">
@@ -360,12 +462,14 @@
 <script setup lang="ts">
 import {
   ArrowUp,
+  BookOpenText,
   Check,
   CirclePlay,
   ChevronDown,
   ChevronRight,
   Info,
   Plus,
+  Settings2,
   ShieldCheck,
   TriangleAlert,
 } from 'lucide-vue-next'
@@ -375,6 +479,7 @@ import 'element-plus/es/components/popover/style/css'
 import 'element-plus/es/components/tooltip/style/css'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import type { ChatSendRequest } from '@/api/chat'
+import type { KnowledgeBase } from '@/api/knowledge'
 import { fetchModels, type ModelInfo } from '@/api/config'
 import {
   deleteUpload,
@@ -407,17 +512,53 @@ const props = withDefaults(
     streamLimited?: boolean
     // 当前会话已有的对话轮数，换模型时要不要先提示
     historyTurns?: number
+    knowledgeBases?: KnowledgeBase[]
+    selectedKnowledgeBaseId?: string
   }>(),
   {
     isResponding: false,
     streamLimited: false,
     historyTurns: 0,
+    knowledgeBases: () => [],
+    selectedKnowledgeBaseId: '',
   },
 )
 const emit = defineEmits<{
   send: [message: { content: string; attachments: UploadedFileInfo[]; request: ChatSendRequest }]
   stop: []
+  'select-knowledge-base': [id: string]
 }>()
+const isKnowledgeMenuOpen = ref(false)
+const knowledgeTrigger = ref<HTMLElement | null>(null)
+const knowledgeTooltipVisible = ref(false)
+let knowledgeTooltipTimer: number | undefined
+const selectedKnowledgeBase = computed(
+  () => props.knowledgeBases.find((base) => base.id === props.selectedKnowledgeBaseId) ?? null,
+)
+
+function hideKnowledgeTooltip(): void {
+  if (knowledgeTooltipTimer !== undefined) window.clearTimeout(knowledgeTooltipTimer)
+  knowledgeTooltipTimer = undefined
+  knowledgeTooltipVisible.value = false
+}
+
+function showKnowledgeTooltip(event: PointerEvent): void {
+  if (!canHover || event.pointerType !== 'mouse' || isKnowledgeMenuOpen.value) return
+  hideKnowledgeTooltip()
+  knowledgeTooltipTimer = window.setTimeout(() => {
+    knowledgeTooltipVisible.value = true
+    knowledgeTooltipTimer = undefined
+  }, 200)
+}
+
+watch(isKnowledgeMenuOpen, (open) => {
+  if (open) hideKnowledgeTooltip()
+})
+
+function selectKnowledgeBase(id: string): void {
+  emit('select-knowledge-base', id)
+  isKnowledgeMenuOpen.value = false
+}
 const sendButtonLabel = computed(() => {
   if (props.isResponding) return '停止回复'
   if (hasUploadingFiles.value) return '附件上传中'
@@ -925,6 +1066,7 @@ function onSliderKeyDown(event: KeyboardEvent) {
 
 onUnmounted(() => {
   document.removeEventListener('pointerdown', dismissCommandMenuOutside)
+  hideKnowledgeTooltip()
   window.clearTimeout(dragTimer)
   window.clearTimeout(settleTimer)
   for (const item of selectedFiles.value) {
@@ -1308,6 +1450,74 @@ function onComposerKeydown(event: KeyboardEvent): void {
 }
 .tool-icon-btn {
   border-color: transparent;
+}
+.knowledge-trigger {
+  max-width: 190px;
+  border-color: transparent;
+  background: #f7f7f8;
+  color: #555b63;
+  font-size: 12px;
+}
+.knowledge-trigger.is-active {
+  background: #eef0f2;
+  color: #25282c;
+}
+.knowledge-trigger-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.knowledge-chevron {
+  flex-shrink: 0;
+  color: #8b9098;
+}
+.knowledge-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px 14px;
+  color: #30343a;
+}
+.knowledge-tooltip-label {
+  color: #8b9098;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.knowledge-tooltip strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.knowledge-tooltip-hint {
+  color: #989da3;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.knowledge-option-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.knowledge-manage-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  color: #555b63;
+  font-size: 12px;
+  text-decoration: none;
+}
+.knowledge-trigger:focus-visible,
+.knowledge-menu button:focus-visible,
+.knowledge-manage-link:focus-visible {
+  outline: 2px solid #8b9fc7;
+  outline-offset: 2px;
 }
 .tool-model-btn {
   gap: 8px;
@@ -1697,6 +1907,9 @@ function onComposerKeydown(event: KeyboardEvent): void {
   }
 }
 @media (hover: hover) {
+  .knowledge-manage-link:hover {
+    background: #f3f4f6;
+  }
   .permission-trigger:hover {
     background: #eeeef0;
   }
@@ -1718,6 +1931,9 @@ function onComposerKeydown(event: KeyboardEvent): void {
   }
 }
 @media (any-pointer: coarse) {
+  .knowledge-manage-link {
+    min-height: 42px;
+  }
   .selected-command-tag {
     min-height: 36px;
     margin-top: 5px;
@@ -1754,6 +1970,7 @@ function onComposerKeydown(event: KeyboardEvent): void {
   }
   /* 去掉 300ms 双击缩放延迟和点击灰块 */
   .tool-btn,
+  .knowledge-manage-link,
   .permission-trigger,
   .send-btn,
   .menu-option,
@@ -1781,6 +1998,39 @@ function onComposerKeydown(event: KeyboardEvent): void {
   }
   .permission-trigger {
     padding: 0 6px;
+  }
+  .knowledge-trigger {
+    justify-content: center;
+    width: 34px;
+    min-width: 34px;
+    padding: 0;
+  }
+  .knowledge-trigger-name,
+  .knowledge-chevron {
+    display: none;
+  }
+}
+@media (min-width: 381px) and (max-width: 640px) {
+  .knowledge-trigger {
+    width: auto;
+    max-width: 82px;
+    padding: 0 6px;
+  }
+  .knowledge-trigger-name {
+    display: block;
+  }
+  .tool-model-btn {
+    max-width: min(34vw, 160px);
+  }
+}
+@media (max-width: 380px) {
+  .tool-model-btn {
+    max-width: min(32vw, 120px);
+  }
+}
+@media (max-width: 340px) {
+  .tool-model-btn {
+    max-width: 28vw;
   }
 }
 .tool-btn:active,

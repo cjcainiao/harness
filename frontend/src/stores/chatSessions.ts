@@ -989,6 +989,16 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
       case 'message_chunk':
         handleMessageChunk(turn, runtime, value)
         break
+      case 'knowledge_sources':
+        closeMessageChunk(runtime)
+        if (Array.isArray(value.sources)) {
+          turn.items.push({
+            id: runtime.nextItemId++,
+            type: 'knowledge_sources',
+            sources: value.sources as import('@/api/knowledge').KnowledgeSource[],
+          })
+        }
+        break
       case 'reasoning_chunk':
         closeMessageChunk(runtime)
         handleReasoningChunk(turn, runtime, value)

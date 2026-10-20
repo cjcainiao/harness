@@ -33,6 +33,9 @@
         :is-responding="isResponding"
         :stream-limited="!chatSessions.hasStreamSlot()"
         :history-turns="historyTurns"
+        :knowledge-bases="knowledgeBases"
+        :selected-knowledge-base-id="selectedKnowledgeBaseId"
+        @select-knowledge-base="selectedKnowledgeBaseId = $event"
         @send="handleSend"
         @stop="handleStop"
       />
@@ -64,6 +67,7 @@ import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { ChatSendRequest } from '@/api/chat'
+import { listKnowledgeBases, type KnowledgeBase } from '@/api/knowledge'
 import type { UploadedFileInfo } from '@/api/uploads'
 import { useChatSessionsStore } from '@/stores/chatSessions'
 import { setPageTitle } from '@/utils/pageTitleUtil'
@@ -88,6 +92,8 @@ const route = useRoute()
 const router = useRouter()
 const chatSessions = useChatSessionsStore()
 const NEW_THREAD_KEY = 'chat:new-thread-id'
+const knowledgeBases = ref<KnowledgeBase[]>([])
+const selectedKnowledgeBaseId = ref('')
 
 // 新对话尚未写入路由时，刷新后沿用同一会话工作空间
 function getNewThreadId(): string {
@@ -103,6 +109,9 @@ chatSessions.markHistoryLoaded(newThreadId.value)
 const threadId = computed(() => {
   const id = route.query.thread_id
   return typeof id === 'string' && id.trim() ? id : newThreadId.value
+})
+watch(threadId, () => {
+  selectedKnowledgeBaseId.value = ''
 })
 const messageHandler = ref<InstanceType<typeof MessageEventHandler> | null>(null)
 const chatInput = ref<InstanceType<typeof ChatInput> | null>(null)
@@ -159,6 +168,19 @@ watch(threadId, readCurrentThread, { immediate: true })
 onMounted(() => {
   window.addEventListener('focus', readCurrentThread)
   document.addEventListener('visibilitychange', readCurrentThread)
+  void listKnowledgeBases()
+    .then((bases) => {
+      knowledgeBases.value = bases
+      if (
+        selectedKnowledgeBaseId.value &&
+        !bases.some((base) => base.id === selectedKnowledgeBaseId.value)
+      ) {
+        selectedKnowledgeBaseId.value = ''
+      }
+    })
+    .catch(() => {
+      knowledgeBases.value = []
+    })
 })
 
 onUnmounted(() => {
@@ -180,7 +202,10 @@ function handleSend(message: {
   )
   messageHandler.value?.startChatTurn(message.content, {
     attachments: message.attachments,
-    request: message.request,
+    request: {
+      ...message.request,
+      knowledge_base_id: selectedKnowledgeBaseId.value || undefined,
+    },
   })
   // 无路由 ID 的新对话发出首条消息后固定到该会话地址
   if (!route.query.thread_id) {

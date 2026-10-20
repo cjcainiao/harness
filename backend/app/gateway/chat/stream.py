@@ -22,6 +22,8 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
     except UploadStoreError as error:
         raise AppException(code=400, message="附件无效，无法开始对话", status_code=400) from error
     except ValueError as error:
+        if str(error) == "知识库不存在":
+            raise AppException(code=404, message="知识库不存在", status_code=404) from error
         raise AppException(code=422, message="模型配置无效，无法开始对话", status_code=422) from error
 
     return StreamingResponse(

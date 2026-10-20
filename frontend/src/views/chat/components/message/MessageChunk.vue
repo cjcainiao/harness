@@ -6,7 +6,47 @@
     v-html="renderedHtml"
     @click="onCodeClick"
     @keydown="onDiagramKeydown"
+    @pointerover="onCitationPointerOver"
+    @pointerout="onCitationPointerOut"
+    @focusin="onCitationFocusIn"
+    @focusout="onCitationFocusOut"
   />
+  <ElTooltip
+    v-if="activeCitation && citationAnchor"
+    :visible="true"
+    :virtual-ref="citationAnchor"
+    virtual-triggering
+    :disabled="!canHover"
+    effect="light"
+    placement="top"
+    :fallback-placements="['bottom', 'top-start', 'bottom-start']"
+    :offset="10"
+    :show-arrow="false"
+    :persistent="false"
+    :popper-style="{
+      padding: '0',
+      width: '320px',
+      maxWidth: 'calc(100vw - 24px)',
+      border: '1px solid #e5e7eb',
+      borderRadius: '10px',
+      boxShadow: '0 8px 28px rgba(0, 0, 0, 0.12)',
+    }"
+  >
+    <template #content>
+      <div
+        class="citation-preview"
+        @pointerenter="cancelCitationHide"
+        @pointerleave="scheduleCitationHide"
+      >
+        <span class="citation-preview-label">参考资料 [{{ activeCitation.number }}]</span>
+        <strong>{{ activeCitation.document_name }}</strong>
+        <span v-if="activeCitation.heading" class="citation-preview-heading">{{
+          activeCitation.heading
+        }}</span>
+        <p v-if="activeExcerpt">{{ activeExcerpt }}</p>
+      </div>
+    </template>
+  </ElTooltip>
   <Teleport to="body">
     <dialog
       v-if="dialogVisible"
@@ -86,19 +126,99 @@ import hljs from 'highlight.js/lib/common'
 import 'highlight.js/styles/github.css'
 import MarkdownIt from 'markdown-it'
 import type { RendererRule } from 'markdown-it'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElTooltip } from 'element-plus'
+import 'element-plus/es/components/tooltip/style/css'
 import { Minus, Plus, Scan, Workflow, X } from 'lucide-vue-next'
 import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { Component } from 'vue'
+import { knowledgeDocumentUrl, type KnowledgeSource } from '@/api/knowledge'
 import { createUuid } from '@/utils/uuidUtil'
 import CodeRunView from '@/views/chat/pages/CodeRunView.vue'
 import { copyToClipboard } from '@/utils/clipboardUtil'
 import { createMermaidPng } from './mermaidPng'
 import { loadMermaid } from './mermaidRenderer'
 
-const props = withDefaults(defineProps<{ content: string; streaming?: boolean }>(), {
-  streaming: false,
-})
+const props = withDefaults(
+  defineProps<{
+    content: string
+    streaming?: boolean
+    sources?: KnowledgeSource[]
+  }>(),
+  {
+    streaming: false,
+    sources: () => [],
+  },
+)
+const canHover = window.matchMedia('(hover: hover)').matches
+const activeCitation = ref<KnowledgeSource | null>(null)
+const citationAnchor = ref<HTMLElement | null>(null)
+const activeExcerpt = computed(() =>
+  activeCitation.value ? citationExcerpt(activeCitation.value) : '',
+)
+let citationHideTimer: number | undefined
+
+function citationExcerpt(source: KnowledgeSource): string {
+  const text = source.content
+    .replace(/(?:^|\n)\s*[-*_]{3,}\s*(?=\n|$)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!text || text === source.heading.trim()) return ''
+  return text.length > 180 ? `${text.slice(0, 180)}…` : text
+}
+
+function cancelCitationHide(): void {
+  if (citationHideTimer !== undefined) window.clearTimeout(citationHideTimer)
+  citationHideTimer = undefined
+}
+
+function hideCitation(): void {
+  cancelCitationHide()
+  activeCitation.value = null
+  citationAnchor.value = null
+}
+
+function scheduleCitationHide(): void {
+  cancelCitationHide()
+  citationHideTimer = window.setTimeout(hideCitation, 160)
+}
+
+function showCitation(anchor: HTMLElement): void {
+  const source = props.sources.find((item) => item.number === Number(anchor.dataset.sourceNumber))
+  if (!source) return
+  cancelCitationHide()
+  citationAnchor.value = anchor
+  activeCitation.value = source
+}
+
+function citationTarget(event: Event): HTMLElement | null {
+  const target = event.target
+  if (!(target instanceof Element)) return null
+  const anchor = target.closest<HTMLElement>('.citation-ref')
+  return anchor && messageRoot.value?.contains(anchor) ? anchor : null
+}
+
+function onCitationPointerOver(event: PointerEvent): void {
+  if (canHover && event.pointerType === 'mouse') {
+    const anchor = citationTarget(event)
+    if (anchor) showCitation(anchor)
+  }
+}
+
+function onCitationPointerOut(event: PointerEvent): void {
+  const anchor = citationTarget(event)
+  if (anchor !== citationAnchor.value) return
+  if (event.relatedTarget instanceof Node && anchor?.contains(event.relatedTarget)) return
+  scheduleCitationHide()
+}
+
+function onCitationFocusIn(event: FocusEvent): void {
+  const anchor = citationTarget(event)
+  if (anchor) showCitation(anchor)
+}
+
+function onCitationFocusOut(event: FocusEvent): void {
+  if (citationTarget(event) === citationAnchor.value) hideCitation()
+}
 
 type OpenDrawer = (page: Component, title: string, pageProps?: Record<string, unknown>) => void
 const openDrawer = inject<OpenDrawer | null>('chat-drawer-open', null)
@@ -162,6 +282,31 @@ const markdown = new MarkdownIt({
   breaks: true,
   highlight: highlightCode,
 })
+
+function citationHtml(source: KnowledgeSource): string {
+  const number = source.number
+  const description = markdown.utils.escapeHtml(`查看参考资料 ${number}：${source.document_name}`)
+  const href = knowledgeDocumentUrl(encodeURIComponent(source.document_id))
+  return `<sup class="citation-marker"><a class="citation-ref" href="${href}" target="_blank" rel="noopener noreferrer" aria-label="${description}" data-source-number="${number}"><span class="citation-number">[${number}]</span></a></sup>`
+}
+
+// 只把当前知识库检索结果中存在的编号转成行内引用
+markdown.renderer.rules.text = (tokens, idx) => {
+  const content = tokens[idx]?.content ?? ''
+  const escaped = markdown.utils.escapeHtml(content)
+  if (!props.sources.length) return escaped
+  let linkDepth = 0
+  for (let index = 0; index < idx; index++) {
+    if (tokens[index]?.type === 'link_open') linkDepth++
+    if (tokens[index]?.type === 'link_close') linkDepth--
+  }
+  if (linkDepth > 0) return escaped
+  return escaped.replace(/([ \t]*)\[(\d+)\]/g, (_label, leading: string, rawNumber: string) => {
+    const number = Number(rawNumber)
+    const source = props.sources.find((item) => item.number === number)
+    return source ? `${leading}${citationHtml(source)}` : ''
+  })
+}
 
 // 代码框头部操作
 const defaultFence = markdown.renderer.rules.fence as RendererRule
@@ -328,11 +473,13 @@ watch(
   renderedHtml,
   () => {
     if (activeDiagram && !messageRoot.value?.contains(activeDiagram)) closeDialog()
+    if (citationAnchor.value && !messageRoot.value?.contains(citationAnchor.value)) hideCitation()
     renderMermaidBlocks()
   },
   { flush: 'post' },
 )
 onUnmounted(() => {
+  hideCitation()
   diagramObserver?.disconnect()
   thumbnailObserver?.disconnect()
   if (thumbnailFrame !== null) window.cancelAnimationFrame(thumbnailFrame)
@@ -345,6 +492,10 @@ onUnmounted(() => {
 
 // 代码区操作分发
 function onCodeClick(event: MouseEvent): void {
+  if (citationTarget(event)) {
+    hideCitation()
+    return
+  }
   const diagram = (event.target as Element).closest<HTMLElement>('.mermaid-diagram')
   if (diagram && messageRoot.value?.contains(diagram)) {
     void openDiagram(diagram)
@@ -665,6 +816,88 @@ async function exportDiagramPng(block: HTMLElement, button: HTMLButtonElement): 
   color: #3369aa;
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+.message-chunk :deep(.citation-marker) {
+  display: inline-block;
+  margin: 0 2px;
+  vertical-align: baseline;
+  line-height: 1;
+}
+.message-chunk :deep(.citation-ref) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  color: #5c6570;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  vertical-align: 0.1em;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.message-chunk :deep(.citation-number) {
+  display: grid;
+  min-width: 22px;
+  height: 16px;
+  padding: 0 3px;
+  place-items: center;
+  border-radius: 4px;
+  background: #eef0f2;
+}
+.message-chunk :deep(.citation-ref:focus-visible) {
+  outline: 2px solid #8b9fc7;
+  outline-offset: 2px;
+}
+.citation-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 13px 14px;
+  color: #30343a;
+}
+.citation-preview-label {
+  color: #8b9098;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.citation-preview strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.citation-preview-heading {
+  overflow-wrap: anywhere;
+  color: #626a72;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.citation-preview p {
+  display: -webkit-box;
+  margin: 2px 0 0;
+  overflow: hidden;
+  color: #666d75;
+  font-size: 12px;
+  line-height: 1.6;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+@media (hover: hover) {
+  .message-chunk :deep(.citation-ref:hover .citation-number) {
+    background: #e3e7eb;
+    color: #30363d;
+  }
+}
+@media (any-pointer: coarse) {
+  .message-chunk :deep(.citation-ref) {
+    min-width: 36px;
+    min-height: 36px;
+    margin-block: -10px;
+  }
 }
 .message-chunk :deep(a:focus-visible) {
   outline: 2px solid #a5b6da;

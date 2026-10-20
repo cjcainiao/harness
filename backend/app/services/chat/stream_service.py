@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 
 from app.schemas.chat.stream_schema import ChatAttachment, ChatRequest
 from app.services.chat.uploads_service import get_upload, uploaded_file_info
+from harness.rag.retrieval.repository import base_exists
 from harness.agents.thread_state import UploadedFileInfo
 from harness.models.factory import validate_model_options
 from harness.runtime.stream import stream_agent
@@ -26,6 +27,8 @@ async def prepare_chat_stream(request: ChatRequest) -> AsyncIterator[str]:
     )
 
     uploaded_files: list[UploadedFileInfo] = []
+    if request.knowledge_base_id is not None and not await asyncio.to_thread(base_exists, request.knowledge_base_id):
+        raise ValueError("知识库不存在")
     if request.thread_id is not None and request.attachments:
         uploaded_files = await asyncio.to_thread(
             _uploaded_file_infos, request.thread_id, request.attachments
@@ -38,4 +41,5 @@ async def prepare_chat_stream(request: ChatRequest) -> AsyncIterator[str]:
         model_name=request.model_name,
         thinking_enabled=request.thinking_enabled,
         reasoning_effort=request.reasoning_effort,
+        knowledge_base_id=request.knowledge_base_id,
     )

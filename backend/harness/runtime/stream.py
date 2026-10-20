@@ -88,13 +88,20 @@ async def stream_agent(
     *,
     thread_id: str | None = None,
     uploaded_files: Sequence[UploadedFileInfo] = (),
+    knowledge_base_id: str | None = None,
     tools: Sequence[Tool] | None = None,
     middleware: Sequence[AgentMiddleware] | None = None,
     system_prompt: str | None = None,
 ) -> AsyncIterator[str]:
     # 会话标识缺失时由服务端生成，历史才有归属
     thread_id = thread_id or uuid.uuid4().hex
-    run_config = {"configurable": {"thread_id": thread_id, "model_name": model_name}}
+    run_config = {
+        "configurable": {
+            "thread_id": thread_id,
+            "model_name": model_name,
+            "knowledge_base_id": knowledge_base_id,
+        }
+    }
 
     recorder = TurnRecorder()
     turn_id = _start_turn(thread_id, message, uploaded_files)

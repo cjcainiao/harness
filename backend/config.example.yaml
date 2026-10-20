@@ -20,7 +20,7 @@ system:
   log_max_bytes: 10485760   # 单个日志文件上限（字节），0 表示不滚动
   log_backup_count: 7    # 滚动保留的历史文件数，0 表示只留当前文件
   log_console: null      # 是否输出到控制台，null 表示按 env 自动（prod 关闭）
-  db_path: data/harness.db   # 数据库文件路径，历史与检查点共用，相对路径按后端项目根解析
+  db_path: data/harness.db   # 数据库文件路径，历史、检查点和知识库共用，相对路径按后端项目根解析
   db_busy_timeout_ms: 5000   # 写冲突时的锁等待上限（毫秒），0 表示不等待
   workspace_dir: data/workspaces   # 会话工作空间根目录，相对路径按后端项目根解析
   upload_max_bytes: 20971520   # 单个上传文件的最大字节数
@@ -52,6 +52,21 @@ recommendations:                          # 会话推荐配置
   recent_turns: 0                         # 参考的上一轮已完成对话数量；0 表示只看本轮
   max_input_tokens: 4000                  # 传给推荐模型的输入估算 Token 上限
   timeout_seconds: 8                      # 推荐模型调用超时时间（秒）
+
+rag:
+  files_dir: data/knowledge                      # 知识库原文件目录，相对路径按后端项目根解析
+  upload_max_bytes: 20971520                     # 单个知识库文档的最大字节数
+  embedding_base_url: ''                         # 向量模型 OpenAI 兼容接口的服务地址
+  embedding_api_key: $DASHSCOPE_API_KEY          # 向量模型服务密钥
+  embedding_model: qwen3.7-text-embedding-flash  # 向量模型名称，修改后自动重建文档索引
+  embedding_dimensions: 1024                     # 向量维度，修改后自动重建文档索引
+  embedding_timeout_seconds: 30.0                # 向量接口请求超时秒数
+  chunk_size: 900                                # 文档切片的最大字符数
+  chunk_overlap: 120                             # 相邻切片的重叠字符数
+  recall_top_k: 12                               # 每路检索召回的切片数量
+  answer_top_k: 5                                # 交给聊天模型的切片数量
+  min_vector_similarity: 0.45                    # 向量结果的最低余弦相似度
+  min_keyword_coverage: 0.5                      # 仅关键词命中时的最低有效提问词覆盖率
 
 # 模型配置，第一个为默认模型
 models:
@@ -219,6 +234,12 @@ tools:
     use: harness.tools.document.convert_document:convert_document_to_markdown # 工具实现
     enabled: true # 是否启用
     aliases: [文档转 Markdown, 转换 Word, 转换 PDF] # 查找别名
+
+  - name: search_knowledge # 工具名称
+    group: document # 所属工具组
+    use: harness.tools.document.search_knowledge:search_knowledge # 工具实现
+    enabled: true # 是否启用
+    aliases: [搜索知识库, 检索文档, 查询资料] # 查找别名
 
   # 图片工具
   - name: view_image # 工具名称

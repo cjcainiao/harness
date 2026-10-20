@@ -3,7 +3,8 @@ import requestUtil, { RequestError, type ApiResult } from '@/utils/requestUtil'
 import type { UploadedFileInfo } from '@/api/uploads'
 
 /** 渲染段类型 */
-export type TurnItemKind = 'message' | 'reasoning' | 'tool' | 'image' | 'compaction' | 'error'
+export type TurnItemKind =
+  'message' | 'reasoning' | 'tool' | 'image' | 'knowledge_sources' | 'compaction' | 'error'
 
 /** 工具执行状态 */
 export type ToolStatus = 'preparing' | 'running' | 'success' | 'error'
@@ -50,6 +51,8 @@ export interface TurnItemInfo {
   arguments: Record<string, unknown> | string | null
   // 工具返回内容
   output: unknown
+  // 知识库引用片段
+  sources?: import('@/api/knowledge').KnowledgeSource[] | null
   // 生成图片标识、格式和尺寸
   image_id?: string | null
   mime_type?: string | null

@@ -7,6 +7,7 @@ from langchain.agents.middleware import AgentMiddleware
 from harness.agents.middlewares.attachments import AttachmentMiddleware
 from harness.agents.middlewares.deferred_tool_filter import DeferredToolFilterMiddleware
 from harness.agents.middlewares.history_summarization import HistorySummarizationMiddleware
+from harness.agents.middlewares.knowledge_context import KnowledgeContextMiddleware
 from harness.agents.middlewares.model_debug import ModelDebugMiddleware
 from harness.agents.middlewares.skill_activation import SkillActivationMiddleware
 from harness.agents.middlewares.thread_data import ThreadDataMiddleware
@@ -30,6 +31,7 @@ def build_agent_middleware(
         ToolCallMiddleware(),
         ThreadDataMiddleware(),
         AttachmentMiddleware(),
+        KnowledgeContextMiddleware(),
         SkillActivationMiddleware(),
         ViewImageMiddleware(),
     ]

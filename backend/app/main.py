@@ -7,7 +7,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.exceptions import register_exception_handlers
-from app.gateway import chat_router, config_router
+from app.gateway import chat_router, config_router, knowledge_router
+from app.services.knowledge.document_service import recover_documents, shutdown_documents
 from app.init_db import initialize_database
 from harness.agents.memory.checkpointer import shutdown_checkpointer
 from harness.config.app_config import get_app_config
@@ -25,8 +26,10 @@ async def lifespan(app: FastAPI):
     try:
         # 初始化历史与检查点表
         await initialize_database()
+        await recover_documents()
         yield
     finally:
+        await shutdown_documents()
         logger.info("应用关闭中", app_name=config.system.app_name)
         await shutdown_checkpointer()
         shutdown_logging()
@@ -54,6 +57,7 @@ def create_app() -> FastAPI:
     # 注册接口路由
     application.include_router(chat_router, prefix=api_prefix)
     application.include_router(config_router, prefix=api_prefix)
+    application.include_router(knowledge_router, prefix=api_prefix)
 
     # CORS 配置
     application.add_middleware(

@@ -26,6 +26,7 @@ MESSAGE_CLOSING_TYPES = frozenset(
         "follow_up_questions",
         "done",
         "error",
+        "knowledge_sources",
     }
 )
 
@@ -403,6 +404,10 @@ class TurnRecorder:
             self._handle_tool_finish(event, STATUS_ERROR)
         elif event_type == "usage":
             self._handle_usage(event)
+        elif event_type == "knowledge_sources":
+            sources = event.get("sources")
+            if isinstance(sources, list):
+                self._segments.append({"kind": "knowledge_sources", "sources": sources})
         elif event_type == "error":
             content = event.get("message")
             if isinstance(content, str) and content:

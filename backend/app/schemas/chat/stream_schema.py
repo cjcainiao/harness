@@ -20,6 +20,7 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=20_000, description="用户消息")
     thread_id: str | None = Field(default=None, min_length=1, max_length=128, description="会话ID")
     attachments: list[ChatAttachment] = Field(default_factory=list, description="本轮上传附件信息")
+    knowledge_base_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$", description="本轮选中的知识库标识")
     model_name: str | None = Field(default=None, min_length=1, max_length=100, description="实际模型名称")
     thinking_enabled: bool = Field(default=False, description="是否启用推理")
     reasoning_effort: ReasoningEffort | None = Field(
