@@ -1,6 +1,9 @@
 <!--生成图片消息-->
 <template>
-  <div class="generated-image-message">
+  <div
+    class="generated-image-message"
+    :style="imageMaxWidth ? { maxWidth: imageMaxWidth } : undefined"
+  >
     <button
       class="image-button"
       :class="{ 'is-placeholder': !imageLoaded }"
@@ -66,6 +69,11 @@ const frameRatio = computed(() =>
     ? `${props.item.width} / ${props.item.height}`
     : props.item.aspectRatio.replace(':', ' / '),
 )
+const imageMaxWidth = computed(() => {
+  const item = props.item
+  if (item.status !== 'ready' || !imageLoaded.value) return null
+  return `${Math.min(420, (520 * item.width) / item.height)}px`
+})
 const loadingLabel = computed(() =>
   props.item.status === 'generating' ? '图片生成中…' : '图片加载中…',
 )
@@ -139,7 +147,7 @@ function onImageError(): void {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
 }
 
 .generated-image:not(.is-loaded) {

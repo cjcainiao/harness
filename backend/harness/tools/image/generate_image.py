@@ -8,7 +8,7 @@ import binascii
 import json
 from io import BytesIO
 from typing import Literal
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 import httpx
 from langchain.tools import ToolRuntime
@@ -45,10 +45,13 @@ class GenerateImageArgs(BaseModel):
 # 校验图片服务配置
 def _settings() -> dict:
     settings = get_tool_settings("generate_image")
-    required_text = ("base_url", "api_key", "model")
+    required_text = ("provider", "base_url", "api_key", "model")
     for name in required_text:
         if not isinstance(settings.get(name), str) or not settings[name].strip():
             raise ValueError(f"generate_image 未配置 {name}")
+    provider = settings["provider"].strip().lower()
+    if provider not in {"qwen", "openai", "gemini", "minimax"}:
+        raise ValueError("generate_image 的 provider 不受支持")
     base_url = settings["base_url"].strip().rstrip("/")
     parsed = urlsplit(base_url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.query or parsed.fragment:
@@ -79,7 +82,7 @@ def _settings() -> dict:
     hosts = settings.get("result_url_hosts")
     if not isinstance(hosts, list) or not all(isinstance(host, str) and host for host in hosts):
         raise ValueError("generate_image 未正确配置 result_url_hosts")
-    return {**settings, "base_url": base_url}
+    return {**settings, "provider": provider, "base_url": base_url}
 
 
 # 校验参考图并编码给图片服务
@@ -100,6 +103,8 @@ def _reference_image_data_url(thread_id: str, file_id: str, max_bytes: int) -> s
 
 # 限定图片结果下载域名
 def _allowed_image_url(url: str, hosts: list[str]) -> bool:
+    if not isinstance(url, str):
+        return False
     try:
         parsed = urlsplit(url)
         hostname = (parsed.hostname or "").lower()
@@ -115,53 +120,172 @@ def _allowed_image_url(url: str, hosts: list[str]) -> bool:
         return False
 
 
+# 解码图片服务返回的图片
+def _decode_image(encoded: str, max_bytes: int) -> bytes:
+    if len(encoded) > (max_bytes + 2) // 3 * 4 + 16:
+        raise ValueError("生成图片超过大小限制")
+    try:
+        data = base64.b64decode(encoded, validate=True)
+    except binascii.Error as error:
+        raise ValueError("图片服务返回的图片编码无效") from error
+    if len(data) > max_bytes:
+        raise ValueError("生成图片超过大小限制")
+    return data
+
+
+# 下载图片服务返回的地址
+async def _download_image(client: httpx.AsyncClient, url: str, settings: dict) -> bytes:
+    if not _allowed_image_url(url, settings["result_url_hosts"]):
+        raise ValueError("图片服务返回了未允许的图片地址")
+    async with client.stream("GET", url) as response:
+        response.raise_for_status()
+        chunks: list[bytes] = []
+        total = 0
+        async for chunk in response.aiter_bytes():
+            total += len(chunk)
+            if total > settings["max_image_bytes"]:
+                raise ValueError("生成图片超过大小限制")
+            chunks.append(chunk)
+        return b"".join(chunks)
+
+
+# 读取兼容接口的图片结果
+async def _openai_result(client: httpx.AsyncClient, body: dict, settings: dict) -> bytes:
+    images = body.get("data")
+    if not isinstance(images, list) or not images or not isinstance(images[0], dict):
+        raise ValueError("图片服务返回格式无效")
+    first = images[0]
+    encoded = first.get("b64_json") or first.get("image_base64") or first.get("base64")
+    if isinstance(encoded, str) and encoded:
+        return _decode_image(encoded, settings["max_image_bytes"])
+    url = first.get("url")
+    if isinstance(url, str) and url.startswith("data:image/"):
+        try:
+            mime_type, encoded = url[5:].split(";base64,", 1)
+        except ValueError as error:
+            raise ValueError("图片服务返回的图片编码无效") from error
+        if mime_type not in {"image/png", "image/jpeg", "image/webp"}:
+            raise ValueError("图片服务返回的图片格式无效")
+        return _decode_image(encoded, settings["max_image_bytes"])
+    return await _download_image(client, url, settings)
+
+
 # 请求图片服务并读取生成内容
 async def _request_image(
-    prompt: str, size: str, settings: dict, reference_image_data_url: str | None = None
+    prompt: str, ratio: str, settings: dict, reference_image_data_url: str | None = None
 ) -> bytes:
-    endpoint = f"{settings['base_url']}/images/generations"
-    timeout = settings["timeout_seconds"]
-    max_bytes = settings["max_image_bytes"]
-    payload = {"model": settings["model"].strip(), "prompt": prompt, "size": size, "n": 1}
-    if reference_image_data_url is not None:
-        payload["image"] = reference_image_data_url
+    provider = settings["provider"]
+    model = settings["model"].strip()
+    base_url = settings["base_url"]
     try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
-            response = await client.post(
-                endpoint,
-                headers={"Authorization": f"Bearer {settings['api_key'].strip()}"},
-                json=payload,
-            )
+        async with httpx.AsyncClient(
+            timeout=settings["timeout_seconds"], follow_redirects=False
+        ) as client:
+            if provider in {"qwen", "openai"}:
+                endpoint = f"{base_url}/images/generations"
+                payload = {
+                    "model": model,
+                    "prompt": prompt,
+                    "size": settings["sizes"][ratio],
+                    "n": 1,
+                }
+                headers = {"Authorization": f"Bearer {settings['api_key'].strip()}"}
+                if reference_image_data_url is not None and provider == "qwen":
+                    payload["image"] = reference_image_data_url
+                if reference_image_data_url is not None and provider == "openai":
+                    encoded = reference_image_data_url.split(",", 1)[1]
+                    mime_type = reference_image_data_url[5:].split(";", 1)[0]
+                    extension = {
+                        "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"
+                    }[mime_type]
+                    files = {
+                        "image": (f"reference.{extension}", base64.b64decode(encoded), mime_type)
+                    }
+                    response = await client.post(
+                        f"{base_url}/images/edits",
+                        headers=headers,
+                        data={
+                            "model": model,
+                            "prompt": prompt,
+                            "size": settings["sizes"][ratio],
+                            "n": "1",
+                        },
+                        files=files,
+                    )
+                else:
+                    response = await client.post(endpoint, headers=headers, json=payload)
+            elif provider == "gemini":
+                if "/" in model or not model:
+                    raise ValueError("generate_image 的 Gemini model 无效")
+                parts: list[dict] = []
+                if reference_image_data_url is not None:
+                    mime_type, encoded = reference_image_data_url[5:].split(";base64,", 1)
+                    parts.append({"inline_data": {"mime_type": mime_type, "data": encoded}})
+                parts.append({"text": prompt})
+                response = await client.post(
+                    f"{base_url}/models/{quote(model, safe='-._')}:generateContent",
+                    headers={"x-goog-api-key": settings["api_key"].strip()},
+                    json={
+                        "contents": [{"parts": parts}],
+                        "generationConfig": {
+                            "responseModalities": ["TEXT", "IMAGE"],
+                            "imageConfig": {"aspectRatio": ratio},
+                        },
+                    },
+                )
+            elif provider == "minimax":
+                payload = {
+                    "model": model,
+                    "prompt": prompt,
+                    "aspect_ratio": ratio,
+                    "response_format": "base64",
+                    "n": 1,
+                }
+                if reference_image_data_url is not None:
+                    payload["subject_reference"] = [
+                        {"type": "character", "image_file": reference_image_data_url}
+                    ]
+                response = await client.post(
+                    f"{base_url}/image_generation",
+                    headers={"Authorization": f"Bearer {settings['api_key'].strip()}"},
+                    json=payload,
+                )
+            else:
+                raise ValueError("generate_image 的 provider 不受支持")
             response.raise_for_status()
             body = response.json()
-            if not isinstance(body, dict) or not isinstance(body.get("data"), list) or not body["data"]:
+            if not isinstance(body, dict):
                 raise ValueError("图片服务返回格式无效")
-            first = body["data"][0]
-            if not isinstance(first, dict):
-                raise ValueError("图片服务返回格式无效")
-            encoded = first.get("b64_json")
-            if isinstance(encoded, str) and encoded:
-                if len(encoded) > (max_bytes + 2) // 3 * 4 + 16:
-                    raise ValueError("生成图片超过大小限制")
-                try:
-                    return base64.b64decode(encoded, validate=True)
-                except binascii.Error as error:
-                    raise ValueError("图片服务返回的图片编码无效") from error
-            url = first.get("url")
-            if not isinstance(url, str) or not _allowed_image_url(
-                url, settings["result_url_hosts"]
-            ):
-                raise ValueError("图片服务返回了未允许的图片地址")
-            async with client.stream("GET", url) as image_response:
-                image_response.raise_for_status()
-                chunks: list[bytes] = []
-                total = 0
-                async for chunk in image_response.aiter_bytes():
-                    total += len(chunk)
-                    if total > max_bytes:
-                        raise ValueError("生成图片超过大小限制")
-                    chunks.append(chunk)
-                return b"".join(chunks)
+            if provider in {"qwen", "openai"}:
+                return await _openai_result(client, body, settings)
+            if provider == "gemini":
+                candidates = body.get("candidates")
+                if isinstance(candidates, list):
+                    for candidate in candidates:
+                        content = candidate.get("content") if isinstance(candidate, dict) else None
+                        parts = content.get("parts") if isinstance(content, dict) else None
+                        if isinstance(parts, list):
+                            for part in parts:
+                                if isinstance(part, dict) and part.get("thought") is True:
+                                    continue
+                                inline = (
+                                    part.get("inlineData") or part.get("inline_data")
+                                    if isinstance(part, dict)
+                                    else None
+                                )
+                                if isinstance(inline, dict) and isinstance(inline.get("data"), str):
+                                    return _decode_image(
+                                        inline["data"], settings["max_image_bytes"]
+                                    )
+                raise ValueError("图片服务未返回图片")
+            base_resp = body.get("base_resp")
+            if isinstance(base_resp, dict) and base_resp.get("status_code", 0) != 0:
+                raise ValueError(f"图片服务请求失败：MiniMax 错误码 {base_resp['status_code']}")
+            data = body.get("data")
+            images = data.get("image_base64") if isinstance(data, dict) else None
+            if not isinstance(images, list) or not images or not isinstance(images[0], str):
+                raise ValueError("图片服务未返回图片")
+            return _decode_image(images[0], settings["max_image_bytes"])
     except httpx.TimeoutException as error:
         raise ValueError("图片生成超时") from error
     except httpx.HTTPStatusError as error:
@@ -208,7 +332,7 @@ async def generate_image(
         reference_image_data_url = await asyncio.to_thread(
             _reference_image_data_url, thread_id, reference_image_id, settings["max_reference_image_bytes"]
         )
-    data = await _request_image(prompt, settings["sizes"][ratio], settings, reference_image_data_url)
+    data = await _request_image(prompt, ratio, settings, reference_image_data_url)
     stored = await asyncio.to_thread(
         save_generated_image,
         thread_id,

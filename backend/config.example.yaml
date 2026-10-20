@@ -227,13 +227,17 @@ tools:
     enabled: true # 是否启用
     aliases: [查看图片, 读取图片, 分析图片] # 查找别名
 
+  # 切换服务时同步修改 provider、base_url、api_key、model；OpenAI 兼容模型还需匹配 sizes。
+  # Gemini 地址示例：https://generativelanguage.googleapis.com/v1beta；MiniMax 国内地址：https://api.minimaxi.com/v1。
+  # MiniMax 的参考图仅用于人物主体参考，不能代替通用图片编辑。
   - name: generate_image # 工具名称
     group: image # 所属工具组
     use: harness.tools.image.generate_image:generate_image # 工具实现
     enabled: true # 是否启用
     aliases: [生成图片, 生图, 画图, 文生图, 参考图生图, 图片编辑] # 查找别名
     settings: {
-      base_url: 'https://llm-xfzs78am2mvja5bc.cn-beijing.maas.aliyuncs.com/compatible-mode/v1', # 图片服务的 OpenAI Images 兼容地址，填写到 /v1
+      provider: qwen, # 图片服务协议：qwen、openai、gemini 或 minimax
+      base_url: 'https://llm-xfzs78am2mvja5bc.cn-beijing.maas.aliyuncs.com/compatible-mode/v1', # 服务地址：OpenAI、百炼和 MiniMax 填到 /v1，Gemini 填到 /v1beta
       api_key: $DASHSCOPE_API_KEY, # 图片服务密钥
       model: qwen-image-3.0-pro, # 图片模型名称
       timeout_seconds: 600, # 单次图片生成的超时秒数
@@ -242,8 +246,8 @@ tools:
       max_image_pixels: 16000000, # 单张生成图片的最大像素数
       max_prompt_chars: 8000, # 图片描述的最大字符数
       default_aspect_ratio: '1:1', # 默认图片画幅
-      sizes: {'1:1': 1024x1024, '16:9': 1536x864, '9:16': 864x1536}, # 各画幅请求尺寸
-      result_url_hosts: [aliyuncs.com] # 允许下载图片结果的域名后缀
+      sizes: {'1:1': 1024x1024, '16:9': 1536x864, '9:16': 864x1536}, # 百炼和 OpenAI 兼容接口的各画幅请求尺寸
+      result_url_hosts: [aliyuncs.com] # 允许下载图片结果的域名后缀，返回 URL 时按服务调整
     } # 工具额外配置
 
   # 网络工具
