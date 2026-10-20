@@ -153,10 +153,17 @@ export async function fetchThreadTurns(
   limit = 20,
   beforeSeq?: number,
 ): Promise<TurnInfo[] | null> {
-  const result = await requestUtil.get<ApiResult<TurnInfo[]>>(
-    `/api/chat/threads/${encodeURIComponent(threadId)}/turns`,
-    { params: { limit, before_seq: beforeSeq } },
-  )
+  let result: ApiResult<TurnInfo[]>
+  try {
+    result = await requestUtil.get<ApiResult<TurnInfo[]>>(
+      `/api/chat/threads/${encodeURIComponent(threadId)}/turns`,
+      { params: { limit, before_seq: beforeSeq } },
+    )
+  } catch (error) {
+    // 本地空会话尚未写入服务端
+    if (error instanceof RequestError && error.status === 404) return null
+    throw error
+  }
 
   // 会话不存在按空历史处理
   if (result.code === 404) return null

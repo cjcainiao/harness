@@ -17,6 +17,7 @@
         @fork-created="handleForkCreated"
         @ask-follow-up="handleFollowUp"
       />
+      <NewChatWelcome v-if="showNewChatWelcome" @select-prompt="handleStarterPrompt" />
     </div>
     <!-- 底部固定区 -->
     <footer class="chat-bottom">
@@ -82,6 +83,7 @@ import ChatInput from './components/input/ChatInput.vue'
 import StreamStatus from './components/input/StreamStatus.vue'
 import UsageBar from './components/input/UsageBar.vue'
 import MessageEventHandler from './components/message/MessageEventHandler.vue'
+import NewChatWelcome from './components/message/NewChatWelcome.vue'
 import SessionHeader from './components/message/SessionHeader.vue'
 import type { StreamStatusInfo } from './components/message/messageTurn'
 
@@ -127,6 +129,10 @@ watch(sessionTitle, (title) => setPageTitle(title), { immediate: true })
 const sessionUsage = computed(() => chatSessions.getUsage(threadId.value))
 // 本会话已有的轮数
 const historyTurns = computed(() => chatSessions.getTurns(threadId.value).length)
+// 已确认的空会话显示欢迎语
+const showNewChatWelcome = computed(
+  () => chatSessions.isHistoryLoaded(threadId.value) && historyTurns.value === 0,
+)
 
 // 抽屉里嵌入的页面，为空即关闭
 const drawerPage = ref<Component | null>(null)
@@ -224,6 +230,11 @@ function handleStop(): void {
 // 将选中的用户消息带回输入框重新编辑
 function handleEditMessage(content: string): void {
   chatInput.value?.setDraft(content)
+}
+
+// 将建议文字填入输入框
+function handleStarterPrompt(prompt: string): void {
+  chatInput.value?.setDraft(prompt)
 }
 
 function handleForkCreated(id: string): void {

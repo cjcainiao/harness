@@ -234,7 +234,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
   // 每轮属于哪个会话
   const turnThreads = new Map<string, string>()
   // 已经读过服务端历史的会话，切回来不再重复拉
-  const historyLoaded = new Set<string>()
+  const historyLoaded = reactive(new Set<string>())
   // 服务端返回过的会话标识，用来认出本地新建未落库的会话
   const loadedThreadIds = new Set<string>()
   // 只复用本地创建且尚未提问的会话
@@ -322,7 +322,10 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
   function getOrCreateEmptySession(currentThreadId?: string): string {
     const current = sessions.value.find((session) => session.id === currentThreadId)
     const currentEmpty =
-      current && !loadedThreadIds.has(current.id) && getTurns(current.id).length === 0
+      current &&
+      !loadedThreadIds.has(current.id) &&
+      (localSessionIds.has(current.id) || historyLoaded.has(current.id)) &&
+      getTurns(current.id).length === 0
         ? current
         : undefined
     const empty = sessions.value.filter(
@@ -354,6 +357,7 @@ export const useChatSessionsStore = defineStore('chatSessions', () => {
       }
     }
     localSessionIds.add(kept.id)
+    markHistoryLoaded(kept.id)
     return kept.id
   }
 
