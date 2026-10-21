@@ -10,6 +10,9 @@
 - 依赖只允许 `app -> harness` 单向，`harness/` 内禁止 import `app/` 和 FastAPI 的东西
 - `harness/` 各包的 `__init__.py` 默认只写一行包说明；只聚合同名类的包（如 `middlewares`）可以导出，但不得 re-export 会拉起整条依赖链的模块（`runtime/__init__.py` 导 `stream` 就绕回 `storage.db` 成了环）
 - `harness/rag/document/` 放文档解析、切片、索引和文档数据访问；`harness/rag/retrieval/` 放检索和排序；两条流程共用的向量请求、数据库连接与表结构留在 `harness/rag/` 根层
+- `harness/multimodal/image/base.py` 定义文生图和图生图统一接口；各厂商在 `harness/multimodal/image/` 下分别实现，`generation.py` 只负责按配置选用实现和统一处理请求异常
+- 图片服务的完整请求地址和画幅尺寸由各厂商适配器维护；`generate_image.settings` 不配置 `base_url`、`sizes`，变更厂商地址或业务空间时修改对应适配器
+- `harness/tools/image/generate_image.py` 只负责工具参数、当前会话参考图校验及结果保存；新增图片厂商时先实现统一接口，再登记到图像服务映射，不在工具中添加厂商请求分支
 - 路由统一挂在 `system.api_prefix`（默认 /api）下，`/health` 除外
 - 普通 JSON 响应用 `app.schemas.result.Result` 包装；流式对话和文件预览使用对应的响应类型
 
@@ -30,7 +33,7 @@
 - 写回用合并语义：只更新请求传来的字段，未传字段保留；原子替换
 - 修改现有 YAML 统一调用 `harness/utils/yaml_util.py:edit_yaml_text`，工具内部锁住读取、修改和原子替换；业务模块不另设写锁，也不整份重新序列化配置文件
 - 对外接口返回模型配置不暴露 `api_key`、`base_url`
-- 可调参数只认 `config.yaml` 一个出处，模块里不留同名的硬编码常量（如锁等待时长走 `system.db_busy_timeout_ms`，不写 `BUSY_TIMEOUT_MS`）
+- 除图片厂商适配器的完整请求地址和画幅尺寸外，可调参数只认 `config.yaml` 一个出处，模块里不留同名的硬编码常量（如锁等待时长走 `system.db_busy_timeout_ms`，不写 `BUSY_TIMEOUT_MS`）
 - 新增配置键要同步补 `config.example.yaml`；`Field(description=...)` 与 YAML 行内注释同一句话，注释列与相邻行对齐；`config_version` 不因加键 bump
 - `config.yaml` 不入版本控制且含真实密钥，核对只按行读指定键，不整文件 diff、不打印密钥行
 
@@ -94,7 +97,7 @@
 - 注释只写当前这段代码：不描述调用方或别的模块会怎么反应，不复述签名、参数名、类型注解和返回值
 - `except` 分支的注释只交代为什么这么放行，如 `# 调试读库失败不打断模型调用`
 - 配置类字段不写注释，说明只放 `Field(description=...)`；工具 `args_schema` 字段写一行名词短语，如 `# 待统计的文本`，取值优先级留在 description
-- DDL 与 YAML 逐字段一行注释
+- DDL 与 YAML 业务参数逐字段一行注释；工具注册的 `name`、`group`、`use`、`enabled`、`aliases`、`settings` 等结构字段可省略显而易见的注释
 - 未实现的骨架函数照样按短语标签注释
 - 文件开头一行说明文件用途，如 `# 模型工厂`
 - 类型注解全开，用 `X | None` 新语法
