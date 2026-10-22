@@ -18,6 +18,11 @@
         @ask-follow-up="handleFollowUp"
       />
       <NewChatWelcome v-if="showNewChatWelcome" @select-prompt="handleStarterPrompt" />
+      <MessageSidePanel
+        :key="threadId"
+        :thread-id="threadId"
+        :show-mobile-trigger="historyTurns > 0"
+      />
     </div>
     <!-- 底部固定区 -->
     <footer class="chat-bottom">
@@ -83,6 +88,7 @@ import ChatInput from './components/input/ChatInput.vue'
 import StreamStatus from './components/input/StreamStatus.vue'
 import UsageBar from './components/input/UsageBar.vue'
 import MessageEventHandler from './components/message/MessageEventHandler.vue'
+import MessageSidePanel from './components/message/MessageSidePanel.vue'
 import NewChatWelcome from './components/message/NewChatWelcome.vue'
 import SessionHeader from './components/message/SessionHeader.vue'
 import type { StreamStatusInfo } from './components/message/messageTurn'

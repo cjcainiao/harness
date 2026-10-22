@@ -1,0 +1,88 @@
+# 全局启动文件
+
+from contextlib import asynccontextmanager
+
+import uvicorn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.core.exceptions import register_exception_handlers
+from app.core.gateway import chat_router, config_router, knowledge_router
+from app.core.init_db import initialize_database
+from app.core.services.chat.stream_service import shutdown_chat_tasks
+from app.core.services.knowledge.document_service import recover_documents, shutdown_documents
+from harness.agents.memory.checkpointer import shutdown_checkpointer
+from harness.config.app_config import get_app_config
+from harness.core.logger import get_logger, shutdown_logging
+
+
+logger = get_logger(__name__)
+
+
+# 生命周期管理
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    config = get_app_config()
+    logger.info("应用启动中", app_name=config.system.app_name, env=config.system.env)
+    try:
+        # 初始化历史与检查点表
+        await initialize_database()
+        await recover_documents()
+        yield
+    finally:
+        await shutdown_chat_tasks()
+        await shutdown_documents()
+        logger.info("应用关闭中", app_name=config.system.app_name)
+        await shutdown_checkpointer()
+        shutdown_logging()
+
+
+async def health_check() -> dict[str, str]:
+    logger.info("执行健康检查")
+    return {"status": "ok"}
+
+
+# 创建应用
+def create_app() -> FastAPI:
+    config = get_app_config()
+    application = FastAPI(
+        title=config.system.app_name,
+        debug=config.system.debug,
+        lifespan=lifespan,
+    )
+
+    # 注册全局异常处理
+    register_exception_handlers(application)
+
+    # 路由前缀
+    api_prefix = config.system.api_prefix
+    # 注册接口路由
+    application.include_router(chat_router, prefix=api_prefix)
+    application.include_router(config_router, prefix=api_prefix)
+    application.include_router(knowledge_router, prefix=api_prefix)
+
+    # CORS 配置
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=config.system.allow_origins,
+        allow_credentials=config.system.allow_credentials,
+        allow_methods=config.system.allow_methods,
+        allow_headers=config.system.allow_headers,
+    )
+    application.add_api_route("/health", health_check, methods=["GET"], summary="健康检测接口")
+    return application
+
+
+# 全局应用实例
+app = create_app()
+
+
+if __name__ == "__main__":
+    config = get_app_config()
+    uvicorn.run(
+        "app.core.main:app",
+        host=config.system.host,
+        port=config.system.port,
+        log_config=None,
+        reload=False,
+    )

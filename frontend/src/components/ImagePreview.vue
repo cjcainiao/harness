@@ -15,7 +15,7 @@
       >
         <img class="preview-image" :src="src" :alt="alt || '图片预览'" draggable="false" />
         <button class="preview-close" type="button" aria-label="关闭预览" @click="emit('close')">
-          <X :size="18" aria-hidden="true" />
+          <span class="preview-close-icon" aria-hidden="true"></span>
         </button>
       </div>
     </Transition>
@@ -23,7 +23,6 @@
 </template>
 
 <script setup lang="ts">
-import { X } from 'lucide-vue-next'
 import { nextTick, ref, watch } from 'vue'
 
 const props = defineProps<{ src?: string | null; alt?: string }>()
@@ -80,18 +79,51 @@ watch(
   height: 32px;
   align-items: center;
   justify-content: center;
+  padding: 0;
   border: 1px solid transparent;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.preview-close-icon {
+  position: relative;
+  display: block;
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+.preview-close-icon::before,
+.preview-close-icon::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  content: '';
+}
+.preview-close-icon::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.preview-close-icon::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 /* 悬停才出现圆形描边 */
-.preview-close:hover,
 .preview-close:focus-visible {
   border-color: rgba(255, 255, 255, 0.32);
   background: rgba(255, 255, 255, 0.24);
+}
+@media (hover: hover) {
+  .preview-close:hover {
+    border-color: rgba(255, 255, 255, 0.32);
+    background: rgba(255, 255, 255, 0.24);
+  }
 }
 
 .preview-fade-enter-active,

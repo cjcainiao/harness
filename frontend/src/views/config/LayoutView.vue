@@ -7,9 +7,12 @@
     <main
       class="config-main"
       :class="{
-        'management-main': ['config-mcp', 'config-model', 'config-skills'].includes(
-          String($route.name),
-        ),
+        'management-main': [
+          'config-mcp',
+          'config-model',
+          'config-skills',
+          'config-system',
+        ].includes(String($route.name)),
       }"
     >
       <router-view />

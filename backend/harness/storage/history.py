@@ -132,6 +132,14 @@ FROM chat_turn
 WHERE id = ?
 """
 
+# 会话图片清单读取所有轮次的渲染段
+SQL_SELECT_GENERATED_IMAGES = """
+SELECT items_json
+FROM chat_turn
+WHERE thread_id = ?
+ORDER BY seq DESC
+"""
+
 # 推荐输入只读取当前会话最近已完成的轮次
 SQL_SELECT_RECENT_COMPLETED_TURNS = """
 SELECT question, items_json
@@ -353,6 +361,47 @@ async def list_turns(
             rows = await cursor.fetchall()
 
     return [_decode_turn(dict(row)) for row in reversed(rows)]
+
+
+# 读取会话所有轮次中的生成图片
+async def list_generated_images(thread_id: str) -> list[dict[str, Any]]:
+    async with open_history_db() as conn:
+        async with conn.execute(SQL_SELECT_GENERATED_IMAGES, (thread_id,)) as cursor:
+            rows = await cursor.fetchall()
+
+    images: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in rows:
+        try:
+            items = json.loads(row["items_json"])
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(items, list):
+            continue
+        for item in reversed(items):
+            if not isinstance(item, dict) or item.get("kind") != "image":
+                continue
+            image_id = item.get("image_id")
+            mime_type = item.get("mime_type")
+            width = item.get("width")
+            height = item.get("height")
+            if (
+                not isinstance(image_id, str)
+                or len(image_id) != 32
+                or any(char not in "0123456789abcdef" for char in image_id)
+                or image_id in seen
+                or mime_type not in {"image/png", "image/jpeg", "image/webp"}
+                or type(width) is not int
+                or type(height) is not int
+                or width < 1
+                or height < 1
+            ):
+                continue
+            seen.add(image_id)
+            images.append(
+                {"image_id": image_id, "mime_type": mime_type, "width": width, "height": height}
+            )
+    return images
 
 
 # 按标识读取单轮及其渲染段

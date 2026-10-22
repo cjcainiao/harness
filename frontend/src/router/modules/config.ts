@@ -27,6 +27,11 @@ const configRoutes: RouteRecordRaw[] = [
         name: 'config-skills',
         component: () => import('@/views/config/pages/SkillsView.vue'),
       },
+      {
+        path: 'system',
+        name: 'config-system',
+        component: () => import('@/views/config/pages/SystemView.vue'),
+      },
     ],
   },
 ]

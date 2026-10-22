@@ -6,26 +6,27 @@
 - 正式启动：`make start`
 
 ## 架构约束
-- `app/` 是 Web 外壳，`harness/` 是独立框架库
-- 依赖只允许 `app -> harness` 单向，`harness/` 内禁止 import `app/` 和 FastAPI 的东西
+- `app/` 根目录仅保留包入口；现有应用入口、数据库初始化、异常处理、网关、服务、结构和通道统一放在 `app/core/`，后续业务包与 `core/` 平级，`harness/` 是独立框架库
+- 依赖只允许 `app -> harness` 单向，`harness/` 内禁止 import `app/` 和 FastAPI 的东西；业务包不反向依赖 `app/core/`，由网关调用业务包
 - `harness/` 各包的 `__init__.py` 默认只写一行包说明；只聚合同名类的包（如 `middlewares`）可以导出，但不得 re-export 会拉起整条依赖链的模块（`runtime/__init__.py` 导 `stream` 就绕回 `storage.db` 成了环）
 - `harness/rag/document/` 放文档解析、切片、索引和文档数据访问；`harness/rag/retrieval/` 放检索和排序；两条流程共用的向量请求、数据库连接与表结构留在 `harness/rag/` 根层
 - `harness/multimodal/image/base.py` 定义文生图和图生图统一接口；各厂商在 `harness/multimodal/image/` 下分别实现，`generation.py` 只负责按配置选用实现和统一处理请求异常
 - 图片服务的完整请求地址和画幅尺寸由各厂商适配器维护；`generate_image.settings` 不配置 `base_url`、`sizes`，变更厂商地址或业务空间时修改对应适配器
 - `harness/tools/image/generate_image.py` 只负责工具参数、当前会话参考图校验及结果保存；新增图片厂商时先实现统一接口，再登记到图像服务映射，不在工具中添加厂商请求分支
 - 路由统一挂在 `system.api_prefix`（默认 /api）下，`/health` 除外
-- 普通 JSON 响应用 `app.schemas.result.Result` 包装；流式对话和文件预览使用对应的响应类型
+- 普通 JSON 响应用 `app.core.schemas.result.Result` 包装；流式对话和文件预览使用对应的响应类型
 
 ## 网关层
-- `app/gateway/` 按业务模块建目录，不在根目录新增单个业务接口文件；目前有 `chat/` 和 `config/`
-- `chat/` 放对话流、历史、斜杠菜单、上传接口；`config/` 放模型与 MCP 配置接口。相关业务代码和请求/响应结构分别放在 `app/services/<模块>/`、`app/schemas/<模块>/`
-- `app/services/<模块>/` 的业务文件统一命名为 `<业务>_service.py`，如 `model_service.py`；`__init__.py` 保留原名
-- `app/schemas/<模块>/` 的结构文件统一命名为 `<业务>_schema.py`，如 `model_schema.py`；`__init__.py` 保留原名，通用响应结构使用 `app/schemas/result.py`
+- `app/core/gateway/` 按业务模块建目录，不在根目录新增单个业务接口文件；目前有 `chat/`、`config/` 和 `knowledge/`
+- 后续业务的 HTTP 接口仍放在 `app/core/gateway/<模块>/`，由网关调用 `app/<模块>/` 内的业务实现
+- `chat/` 放对话流、历史、斜杠菜单、上传接口；`config/` 放模型与 MCP 配置接口。现有业务代码和请求/响应结构分别放在 `app/core/services/<模块>/`、`app/core/schemas/<模块>/`
+- `app/core/services/<模块>/` 的业务文件统一命名为 `<业务>_service.py`，如 `model_service.py`；`__init__.py` 保留原名
+- `app/core/schemas/<模块>/` 的结构文件统一命名为 `<业务>_schema.py`，如 `model_schema.py`；`__init__.py` 保留原名，通用响应结构使用 `app/core/schemas/result.py`
 - 调整业务或结构文件名时，同步更新网关、业务、结构模块之间的导入路径及测试引用
 - 每个模块的 `__init__.py` 定义一个带模块前缀的 `router`，并通过 `include_router` 汇总本模块的子路由；`chat` 用 `/chat`，`config` 用 `/config`
 - 子路由只写模块前缀之后的路径，不重复写 `/chat` 或 `/config`；例如对话流是 `/stream`，MCP 子路由前缀是 `/mcp`
-- `app/gateway/__init__.py` 只导出模块路由，`app/main.py` 只注册一次模块路由并加上 `system.api_prefix`；不要再单独注册模块内的子路由
-- 网关只处理 HTTP 参数、响应和错误转换；业务逻辑放 `app/services/`，Pydantic 请求/响应结构放 `app/schemas/`
+- `app/core/gateway/__init__.py` 只导出模块路由，`app/core/main.py` 只注册一次模块路由并加上 `system.api_prefix`；不要再单独注册模块内的子路由
+- 网关只处理 HTTP 参数、响应和错误转换；现有业务逻辑放 `app/core/services/`，Pydantic 请求/响应结构放 `app/core/schemas/`
 - 修改接口路径时同步更新前端调用、服务端生成的地址和相关测试；已保存的地址要考虑兼容
 
 ## 配置系统
@@ -40,10 +41,10 @@
 ## 数据库
 - 历史、检查点和知识库共用 `system.db_path`（默认 `data/harness.db`），`journal_mode = WAL`；历史库每条连接由 `session_pragmas()` 统一设置 `busy_timeout`
 - 库文件的相对路径统一由 `harness/runtime/db_path.py:resolve_db_path` 按后端项目根展开，不受启动目录影响
-- 数据库启动入口在 `app/init_db.py`，集中初始化应用表 `chat_thread`、`chat_turn`、`slash_command` 和检查点表 `checkpoints`、`writes`
+- 数据库启动入口在 `app/core/init_db.py`，集中初始化应用表 `chat_thread`、`chat_turn`、`slash_command` 和检查点表 `checkpoints`、`writes`
 - 历史表 DDL 唯一事实源在 `harness/storage/schema.py`，语句全部幂等，启动时执行一遍 `SCHEMA_SCRIPT`
 - 项目自建表不使用 SQL 外键（`REFERENCES`、`FOREIGN KEY`、`ON DELETE CASCADE`）；新增关联记录时由业务逻辑检查目标是否存在，删除时显式清理关联记录，需要原子完成的多表操作放在同一事务中
-- 斜杠命令表 DDL 与初始数据由 `app/schemas/chat/slash_schema.py:init_slash_commands` 初始化，`app/init_db.py` 在启动时调用
+- 斜杠命令表 DDL 与初始数据由 `app/core/schemas/chat/slash_schema.py:init_slash_commands` 初始化，`app/core/init_db.py` 在启动时调用
 - 不记版本号、不做迁移链（不用 `user_version`）；给已存在的表改列要自己补 DDL 或删库重建
 - 建表失败直接抛出让启动失败，不静默降级成"没有历史功能"
 - 写历史走同步短事务（`connect_history_db`），写失败只 `logger.warning` 不打断回复
@@ -89,7 +90,7 @@
 - 依赖只按锁文件装：`uv sync --frozen --no-dev --no-install-project`，`harness` 本身不是可安装包
 - `config.yaml` 与 `.env` 烘进镜像，容器内 `system.host` 必须是 `0.0.0.0`，否则端口映射打不通；密钥随镜像层分发，镜像要外发前先换成运行期注入
 - 监听端口取自 `config.yaml`，`EXPOSE` 和 `HEALTHCHECK` 里的 8000 是写死的，改端口要同步这两处
-- 启动用 `python -m app.main`，不走 `uv run` 所以不触发依赖同步；`.env` 靠 `harness/config/app_config.py` 自己 `load_dotenv`
+- 启动用 `python -m app.core.main`，不走 `uv run` 所以不触发依赖同步；`.env` 靠 `harness/config/app_config.py` 自己 `load_dotenv`
 
 ## 代码风格
 - 注释用中文短语标签，一行以内，写在被注释代码上方，如 `# 加载 yaml`
@@ -104,5 +105,5 @@
 - 请求/响应模型用 pydantic，`ConfigDict(extra="forbid")` 严格校验
 
 ## 测试
-- 改完至少跑一遍：`uv run python -c "from app.main import app"` 确认能导入
+- 改完至少跑一遍：`uv run python -c "from app.core.main import app"` 确认能导入
 - 接口改动用 TestClient 冒烟验证状态码和关键字段

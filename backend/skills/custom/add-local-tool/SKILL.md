@@ -34,7 +34,7 @@ description: 在 Harness 后端给主代理新增一个可真实调用的本地�
 ## 验收（一条都不能省）
 
 - 技能本身有改动：由开发侧运行 `uv run python skills/custom/add-local-tool/scripts/check_skill.py`，退出码 0
-- `uv run python -c "from app.main import app"` 通过
+- `uv run python -c "from app.core.main import app"` 通过
 - 懒加载组的工具：确认它出现在 `tool_search` 的目录里（`build_registry()` 返回里有它）
 - 重启后端进程后，用一句明确匹配该能力的提问确认工具真被调用并有返回结果，而不是只在文字里声称
 - 加配置键不 bump `config_version`

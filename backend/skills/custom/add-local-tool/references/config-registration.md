@@ -129,7 +129,7 @@ def count_files(path: str, max_entries: int | None = None) -> str:
 ## 验收命令
 
 ```bash
-uv run python -c "from app.main import app; print('import ok')"
+uv run python -c "from app.core.main import app; print('import ok')"
 
 # 懒加载组：确认进了目录
 uv run python -c "from harness.tools.system.tool_search import build_registry, registry_entries; build_registry(); print([e.name for e in registry_entries()])"

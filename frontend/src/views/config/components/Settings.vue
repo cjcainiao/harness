@@ -12,7 +12,7 @@
       @keydown="scheduleAutoClose"
       @focus="scheduleAutoClose"
     >
-      <HouseIcon :size="21" :stroke-width="1.9" aria-hidden="true" />
+      <HouseIcon :size="17" :stroke-width="1.9" aria-hidden="true" />
     </RouterLink>
   </Transition>
   <button
@@ -29,8 +29,8 @@
     @focus="scheduleAutoClose"
   >
     <span class="settings-surface">
-      <ChevronLeftIcon class="edge-icon" :size="18" :stroke-width="2" aria-hidden="true" />
-      <SettingsIcon class="settings-icon" :size="21" :stroke-width="1.9" aria-hidden="true" />
+      <PanelRightOpenIcon class="edge-icon" :size="16" :stroke-width="1.8" aria-hidden="true" />
+      <SettingsIcon class="settings-icon" :size="17" :stroke-width="1.9" aria-hidden="true" />
     </span>
   </button>
 </template>
@@ -38,8 +38,8 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref } from 'vue'
 import {
-  ChevronLeft as ChevronLeftIcon,
   House as HouseIcon,
+  PanelRightOpen as PanelRightOpenIcon,
   Settings as SettingsIcon,
 } from 'lucide-vue-next'
 
@@ -81,12 +81,12 @@ onBeforeUnmount(clearAutoClose)
 <style scoped>
 .home-button {
   position: fixed;
-  right: max(24px, calc(env(safe-area-inset-right) + 16px));
-  bottom: calc(max(24px, calc(env(safe-area-inset-bottom) + 16px)) + 64px);
+  right: max(20px, calc(env(safe-area-inset-right) + 12px));
+  bottom: calc(max(20px, calc(env(safe-area-inset-bottom) + 12px)) + 48px);
   z-index: 10;
   display: grid;
-  width: 52px;
-  height: 52px;
+  width: 40px;
+  height: 40px;
   place-items: center;
   border: 1px solid #e2e2e2;
   border-radius: 50%;
@@ -148,49 +148,36 @@ onBeforeUnmount(clearAutoClose)
 .settings-toggle {
   position: fixed;
   right: env(safe-area-inset-right, 0px);
-  bottom: max(24px, calc(env(safe-area-inset-bottom) + 16px));
+  bottom: max(20px, calc(env(safe-area-inset-bottom) + 12px));
   z-index: 10;
-  width: 40px;
-  height: 52px;
+  width: 20px;
+  height: 40px;
   padding: 0;
   border: 0;
   background: transparent;
-  color: #303133;
+  color: #626b76;
   cursor: pointer;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   transition:
-    right 360ms cubic-bezier(0.32, 0, 0.18, 1),
-    width 360ms cubic-bezier(0.32, 0, 0.18, 1);
+    right 240ms ease,
+    width 240ms ease;
 }
 .settings-surface {
   position: absolute;
-  top: 0;
-  right: -24px;
-  width: 52px;
-  height: 52px;
-  border: 1px solid #e2e2e2;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 6px 20px rgb(0 0 0 / 10%);
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  background: transparent;
   transition:
-    right 360ms cubic-bezier(0.32, 0, 0.18, 1),
     background 180ms ease,
     box-shadow 180ms ease;
 }
 .edge-icon,
 .settings-icon {
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  grid-area: 1 / 1;
   transition: opacity 180ms ease;
-}
-.edge-icon {
-  left: 13px;
-  transition-delay: 120ms;
-}
-.settings-icon {
-  left: 50%;
 }
 .settings-icon,
 .is-open .edge-icon {
@@ -200,19 +187,15 @@ onBeforeUnmount(clearAutoClose)
   opacity: 1;
 }
 .settings-toggle.is-open {
-  right: max(24px, calc(env(safe-area-inset-right) + 16px));
-  width: 52px;
-  transition-timing-function: cubic-bezier(0.22, 1.12, 0.36, 1);
+  right: max(20px, calc(env(safe-area-inset-right) + 12px));
+  width: 40px;
+  color: #303133;
 }
 .is-open .settings-surface {
-  right: 0;
-  transition-timing-function: cubic-bezier(0.22, 1.12, 0.36, 1);
-}
-.is-open .edge-icon {
-  transition-delay: 0ms;
-}
-.is-open .settings-icon {
-  transition-delay: 140ms;
+  border-color: #e2e2e2;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 10%);
 }
 .settings-toggle:focus-visible {
   outline: none;
@@ -221,7 +204,7 @@ onBeforeUnmount(clearAutoClose)
   outline: 3px solid #8ab4f8;
   outline-offset: 3px;
 }
-.settings-toggle:active .settings-surface {
+.settings-toggle.is-open:active .settings-surface {
   background: #f0f0f0;
 }
 @media (hover: hover) {
@@ -235,9 +218,17 @@ onBeforeUnmount(clearAutoClose)
     background: #f8f8f8;
     box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
   }
-  .settings-toggle:hover .settings-surface {
+  .settings-toggle:not(.is-open):hover {
+    color: #30363d;
+  }
+  .settings-toggle.is-open:hover .settings-surface {
     background: #f8f8f8;
     box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
+  }
+  .home-button:hover ~ .settings-toggle::after {
+    opacity: 0;
+    transform: translate(6px, -50%);
+    transition-delay: 0s;
   }
 }
 .home-button:focus-visible::after,
@@ -245,7 +236,7 @@ onBeforeUnmount(clearAutoClose)
   opacity: 1;
   transform: translate(0, -50%);
 }
-.home-button:is(:hover, :focus-visible) ~ .settings-toggle::after {
+.home-button:focus-visible ~ .settings-toggle::after {
   opacity: 0;
   transform: translate(6px, -50%);
   transition-delay: 0s;
@@ -265,7 +256,7 @@ onBeforeUnmount(clearAutoClose)
 @media (max-width: 720px) {
   .home-button {
     right: max(16px, calc(env(safe-area-inset-right) + 12px));
-    bottom: calc(max(16px, calc(env(safe-area-inset-bottom) + 12px)) + 64px);
+    bottom: calc(max(16px, calc(env(safe-area-inset-bottom) + 12px)) + 48px);
   }
   .settings-toggle {
     bottom: max(16px, calc(env(safe-area-inset-bottom) + 12px));

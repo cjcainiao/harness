@@ -31,7 +31,7 @@
 - 环境变量不区分环境文件：真实配置在 `.env`，格式示例在 `.env.example`；Vite 不读 example，改它不生效
 - 普通请求走 `utils/requestUtil`，响应结构对应后端 `Result`：`{ code, message, data }`，业务码 200 才算成功
 - 流式对话走 `utils/sseUtil`，不经过 axios 封装
-- 接口路径以后端 `app/gateway/` 实际路由为准
+- 接口路径以后端 `app/core/gateway/` 实际路由为准
 
 ## 长列表翻页
 - 一次固定条数，游标取本页最早那条服务端返回的原始值（时间串或序号），不用本地时间戳反推

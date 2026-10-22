@@ -1344,9 +1344,23 @@ function onComposerKeydown(event: KeyboardEvent): void {
     border-color: #b9c0ca;
   }
 }
-/* 触屏没有悬停态，胶囊常驻显示 */
-@media (hover: none) {
-  .resize-grip {
+/* 手机端仅在编辑区聚焦时显示并启用高度手柄 */
+@media (max-width: 700px) {
+  .resize-handle {
+    pointer-events: none;
+  }
+  .resize-grip,
+  .input-card:focus-within .resize-grip,
+  .input-card:hover .resize-grip,
+  .resize-handle:hover .resize-grip {
+    opacity: 0;
+  }
+  .input-card:has(.input-editor:focus-within) .resize-handle,
+  .resize-handle.is-resizing {
+    pointer-events: auto;
+  }
+  .input-card:has(.input-editor:focus-within) .resize-grip,
+  .resize-handle.is-resizing .resize-grip {
     opacity: 1;
   }
 }

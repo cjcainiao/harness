@@ -26,24 +26,28 @@
     <div class="home-cards">
       <HomeCardCarousel />
     </div>
-    <div class="home-showcase">
+    <div ref="showcaseRef" class="home-showcase">
       <div class="showcase-chat">
-        <HomeChatPreview />
+        <HomeChatPreview v-if="showShowcase" />
       </div>
       <div class="showcase-flow">
-        <HomeFlowDiagram />
+        <HomeFlowDiagram v-if="showShowcase" />
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { defineAsyncComponent, onMounted, onUnmounted, ref } from 'vue'
 import { ExternalLink } from 'lucide-vue-next'
 import HomeCardCarousel from './components/HomeCardCarousel.vue'
-import HomeChatPreview from './components/HomeChatPreview.vue'
-import HomeFlowDiagram from './components/HomeFlowDiagram.vue'
 import HomeParticleField from './components/HomeParticleField.vue'
+
+const HomeChatPreview = defineAsyncComponent(() => import('./components/HomeChatPreview.vue'))
+const HomeFlowDiagram = defineAsyncComponent(() => import('./components/HomeFlowDiagram.vue'))
+const showcaseRef = ref<HTMLElement | null>(null)
+const showShowcase = ref(false)
+let showcaseObserver: IntersectionObserver | undefined
 
 /* 轮播文案 */
 const taglines = [
@@ -88,6 +92,19 @@ function tick(): void {
 }
 
 onMounted(() => {
+  const showcase = showcaseRef.value
+  if (showcase && 'IntersectionObserver' in window) {
+    showcaseObserver = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return
+        showShowcase.value = true
+        showcaseObserver?.disconnect()
+      },
+      { rootMargin: '240px 0px' },
+    )
+    showcaseObserver.observe(showcase)
+  } else showShowcase.value = true
+
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     shownText.value = taglines[0]!
     return
@@ -95,7 +112,10 @@ onMounted(() => {
   timer = setTimeout(tick, typeDelay)
 })
 
-onUnmounted(() => clearTimeout(timer))
+onUnmounted(() => {
+  clearTimeout(timer)
+  showcaseObserver?.disconnect()
+})
 </script>
 
 <style scoped>
@@ -267,12 +287,16 @@ onUnmounted(() => clearTimeout(timer))
   width: 100%;
   margin-top: 56px;
 }
-.showcase-chat {
-  min-width: 0;
-}
-/* 流程图列 */
+.showcase-chat,
 .showcase-flow {
   min-width: 0;
+  height: clamp(420px, calc(100vh - 180px), 640px);
+}
+@supports (height: 100dvh) {
+  .showcase-chat,
+  .showcase-flow {
+    height: clamp(420px, calc(100dvh - 180px), 640px);
+  }
 }
 @media (hover: hover) {
   .hero-btn.is-primary:hover {

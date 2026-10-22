@@ -18,7 +18,7 @@ lock:
 	$(UV) lock
 
 run:
-	$(UV) run uvicorn app.main:app --reload
+	$(UV) run uvicorn app.core.main:app --reload
 
 start:
-	$(UV) run python -m app.main
+	$(UV) run python -m app.core.main

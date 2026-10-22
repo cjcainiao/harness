@@ -35,7 +35,7 @@
 import { computed, ref } from 'vue'
 import type { Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { BookOpenCheck, BrainCircuit, PlugZap, Search, User } from 'lucide-vue-next'
+import { BookOpenCheck, BrainCircuit, PlugZap, Search, Settings2, User } from 'lucide-vue-next'
 
 interface NavItem {
   id: string
@@ -51,6 +51,10 @@ interface NavGroup {
 
 // 导航分组
 const navGroups: NavGroup[] = [
+  {
+    label: '系统',
+    items: [{ id: 'system', label: '系统配置', icon: Settings2, routeName: 'config-system' }],
+  },
   {
     label: '个人',
     items: [

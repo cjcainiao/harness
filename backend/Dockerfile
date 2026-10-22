@@ -61,4 +61,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
     CMD test -f /tmp/health-ok || { curl -fsS http://127.0.0.1:8000/health && touch /tmp/health-ok; }
 
 # 正式启动，等价 make start，但不在运行时同步依赖
-CMD ["python", "-m", "app.main"]
+CMD ["python", "-m", "app.core.main"]
