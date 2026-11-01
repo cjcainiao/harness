@@ -1,63 +1,70 @@
 <!--聊天主页面-->
 <template>
   <div class="chat-index" @keydown.esc="closeDrawer">
-    <SessionHeader
-      :title="sessionTitle"
-      :sidebar-open="sidebarOpen"
-      @toggle-sidebar="emit('toggle-sidebar')"
-    />
-    <!-- 消息显示区 -->
-    <div class="chat-messages">
-      <MessageEventHandler
-        ref="messageHandler"
-        :thread-id="threadId"
-        @responding-change="isResponding = $event"
-        @phase-change="streamStatus = $event"
-        @edit-message="handleEditMessage"
-        @fork-created="handleForkCreated"
-        @ask-follow-up="handleFollowUp"
+    <!-- 消息主列 -->
+    <div class="chat-column">
+      <SessionHeader
+        :title="sessionTitle"
+        :sidebar-open="sidebarOpen"
+        :side-panel-open="sidePanelOpen"
+        @toggle-sidebar="emit('toggle-sidebar')"
+        @toggle-side-panel="sidePanelOpen = !sidePanelOpen"
       />
-      <NewChatWelcome v-if="showNewChatWelcome" @select-prompt="handleStarterPrompt" />
-      <MessageSidePanel
-        :key="threadId"
-        :thread-id="threadId"
-        :show-mobile-trigger="historyTurns > 0"
-      />
+      <!-- 消息显示区 -->
+      <div class="chat-messages">
+        <MessageEventHandler
+          ref="messageHandler"
+          :thread-id="threadId"
+          @responding-change="isResponding = $event"
+          @phase-change="streamStatus = $event"
+          @edit-message="handleEditMessage"
+          @fork-created="handleForkCreated"
+          @ask-follow-up="handleFollowUp"
+        />
+      </div>
+      <!-- 底部固定区 -->
+      <footer class="chat-bottom">
+        <StreamStatus
+          :active="isResponding"
+          :phase="streamStatus.phase"
+          :subagent="streamStatus.subagent"
+          :tool="streamStatus.tool"
+        />
+        <ChatInput
+          ref="chatInput"
+          :key="threadId"
+          :thread-id="threadId"
+          :is-responding="isResponding"
+          :stream-limited="!chatSessions.hasStreamSlot()"
+          :history-turns="historyTurns"
+          :knowledge-bases="knowledgeBases"
+          :selected-knowledge-base-id="selectedKnowledgeBaseId"
+          @select-knowledge-base="selectedKnowledgeBaseId = $event"
+          @send="handleSend"
+          @stop="handleStop"
+        />
+        <!-- 上下文占用暂用预览数据 -->
+        <UsageBar
+          :percentage="41"
+          :system-prompt="3"
+          :system-tools="7"
+          :skills="0.5"
+          :skill-count="11"
+          :messages="30.5"
+          :input-tokens="sessionUsage.inputTokens"
+          :output-tokens="sessionUsage.outputTokens"
+          :total-tokens="sessionUsage.totalTokens"
+        />
+      </footer>
     </div>
-    <!-- 底部固定区 -->
-    <footer class="chat-bottom">
-      <StreamStatus
-        :active="isResponding"
-        :phase="streamStatus.phase"
-        :subagent="streamStatus.subagent"
-        :tool="streamStatus.tool"
-      />
-      <ChatInput
-        ref="chatInput"
-        :key="threadId"
-        :thread-id="threadId"
-        :is-responding="isResponding"
-        :stream-limited="!chatSessions.hasStreamSlot()"
-        :history-turns="historyTurns"
-        :knowledge-bases="knowledgeBases"
-        :selected-knowledge-base-id="selectedKnowledgeBaseId"
-        @select-knowledge-base="selectedKnowledgeBaseId = $event"
-        @send="handleSend"
-        @stop="handleStop"
-      />
-      <!-- 上下文占用暂用预览数据 -->
-      <UsageBar
-        :percentage="41"
-        :system-prompt="3"
-        :system-tools="7"
-        :skills="0.5"
-        :skill-count="11"
-        :messages="30.5"
-        :input-tokens="sessionUsage.inputTokens"
-        :output-tokens="sessionUsage.outputTokens"
-        :total-tokens="sessionUsage.totalTokens"
-      />
-    </footer>
+    <!-- 右侧会话信息面板：由顶栏右侧图标开合 -->
+    <MessageSidePanel
+      :key="threadId"
+      :thread-id="threadId"
+      :show-mobile-trigger="historyTurns > 0"
+      :visible="sidePanelOpen"
+      @update:visible="sidePanelOpen = $event"
+    />
     <!-- 右侧抽屉：按需嵌入不同页面 -->
     <ChatDrawer
       :page="drawerPage"
@@ -89,7 +96,6 @@ import StreamStatus from './components/input/StreamStatus.vue'
 import UsageBar from './components/input/UsageBar.vue'
 import MessageEventHandler from './components/message/MessageEventHandler.vue'
 import MessageSidePanel from './components/message/MessageSidePanel.vue'
-import NewChatWelcome from './components/message/NewChatWelcome.vue'
 import SessionHeader from './components/message/SessionHeader.vue'
 import type { StreamStatusInfo } from './components/message/messageTurn'
 
@@ -125,6 +131,8 @@ watch(threadId, () => {
 const messageHandler = ref<InstanceType<typeof MessageEventHandler> | null>(null)
 const chatInput = ref<InstanceType<typeof ChatInput> | null>(null)
 const isResponding = ref(false)
+// 右侧会话信息面板开合状态，默认收起
+const sidePanelOpen = ref(false)
 const streamStatus = ref<StreamStatusInfo>({ phase: 'idle' })
 const sessionTitle = computed(
   () => chatSessions.sessions.find((session) => session.id === threadId.value)?.title ?? '新对话',
@@ -135,10 +143,6 @@ watch(sessionTitle, (title) => setPageTitle(title), { immediate: true })
 const sessionUsage = computed(() => chatSessions.getUsage(threadId.value))
 // 本会话已有的轮数
 const historyTurns = computed(() => chatSessions.getTurns(threadId.value).length)
-// 已确认的空会话显示欢迎语
-const showNewChatWelcome = computed(
-  () => chatSessions.isHistoryLoaded(threadId.value) && historyTurns.value === 0,
-)
 
 // 抽屉里嵌入的页面，为空即关闭
 const drawerPage = ref<Component | null>(null)
@@ -238,11 +242,6 @@ function handleEditMessage(content: string): void {
   chatInput.value?.setDraft(content)
 }
 
-// 将建议文字填入输入框
-function handleStarterPrompt(prompt: string): void {
-  chatInput.value?.setDraft(prompt)
-}
-
 function handleForkCreated(id: string): void {
   void router.push({ name: 'chat-index', query: { thread_id: id } })
 }
@@ -259,8 +258,14 @@ function handleFollowUp(question: string): void {
 .chat-index {
   position: relative;
   display: flex;
-  flex-direction: column;
   height: 100%;
+}
+/* 消息主列：顶栏 + 消息区 + 底部固定区 */
+.chat-column {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
 }
 .chat-messages {
   position: relative;

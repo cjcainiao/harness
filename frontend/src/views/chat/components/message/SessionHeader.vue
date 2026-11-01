@@ -16,18 +16,31 @@
       <FolderClosed class="session-icon" :size="16" :stroke-width="1.6" aria-hidden="true" />
       <h1 class="session-title" :title="title">{{ title }}</h1>
     </div>
+    <button
+      class="header-action panel-toggle"
+      :class="{ 'is-active': sidePanelOpen }"
+      type="button"
+      :aria-label="sidePanelOpen ? '收起会话信息面板' : '展开会话信息面板'"
+      aria-controls="chat-message-side-panel"
+      :aria-expanded="sidePanelOpen"
+      @click="emit('toggle-side-panel')"
+    >
+      <PanelRight :size="16" :stroke-width="1.6" aria-hidden="true" />
+    </button>
   </header>
 </template>
 
 <script setup lang="ts">
-import { FolderClosed, PanelLeftOpen } from 'lucide-vue-next'
+import { FolderClosed, PanelLeftOpen, PanelRight } from 'lucide-vue-next'
 
 defineProps<{
   title: string
   sidebarOpen: boolean
+  sidePanelOpen: boolean
 }>()
 const emit = defineEmits<{
   'toggle-sidebar': []
+  'toggle-side-panel': []
 }>()
 </script>
 
@@ -51,6 +64,15 @@ const emit = defineEmits<{
 .session-icon {
   flex-shrink: 0;
   color: #565d64;
+}
+.panel-toggle {
+  flex-shrink: 0;
+  margin-left: 12px;
+  color: #565d64;
+}
+.panel-toggle.is-active {
+  background: #f2f3f5;
+  color: #343940;
 }
 .session-title {
   overflow: hidden;

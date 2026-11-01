@@ -221,28 +221,31 @@
               @keydown.esc.stop.prevent="isKnowledgeMenuOpen = false"
             >
               <div class="menu-heading">知识库</div>
-              <button
-                class="menu-option"
-                :class="{ 'is-selected': !selectedKnowledgeBaseId }"
-                type="button"
-                :aria-pressed="!selectedKnowledgeBaseId"
-                @click="selectKnowledgeBase('')"
-              >
-                <span>不使用知识库</span>
-                <Check v-if="!selectedKnowledgeBaseId" :size="15" aria-hidden="true" />
-              </button>
-              <button
-                v-for="base in knowledgeBases"
-                :key="base.id"
-                class="menu-option"
-                :class="{ 'is-selected': selectedKnowledgeBaseId === base.id }"
-                type="button"
-                :aria-pressed="selectedKnowledgeBaseId === base.id"
-                @click="selectKnowledgeBase(base.id)"
-              >
-                <span class="knowledge-option-name">{{ base.name }}</span>
-                <Check v-if="selectedKnowledgeBaseId === base.id" :size="15" aria-hidden="true" />
-              </button>
+              <template v-if="knowledgeBases.length">
+                <button
+                  class="menu-option"
+                  :class="{ 'is-selected': !selectedKnowledgeBaseId }"
+                  type="button"
+                  :aria-pressed="!selectedKnowledgeBaseId"
+                  @click="selectKnowledgeBase('')"
+                >
+                  <span>不使用知识库</span>
+                  <Check v-if="!selectedKnowledgeBaseId" :size="15" aria-hidden="true" />
+                </button>
+                <button
+                  v-for="base in knowledgeBases"
+                  :key="base.id"
+                  class="menu-option"
+                  :class="{ 'is-selected': selectedKnowledgeBaseId === base.id }"
+                  type="button"
+                  :aria-pressed="selectedKnowledgeBaseId === base.id"
+                  @click="selectKnowledgeBase(base.id)"
+                >
+                  <span class="knowledge-option-name">{{ base.name }}</span>
+                  <Check v-if="selectedKnowledgeBaseId === base.id" :size="15" aria-hidden="true" />
+                </button>
+              </template>
+              <p v-else class="menu-empty">暂无知识库</p>
               <div class="menu-divider" />
               <router-link
                 class="knowledge-manage-link"
@@ -1567,6 +1570,11 @@ function onComposerKeydown(event: KeyboardEvent): void {
   color: #8b9098;
   font-size: 11px;
   font-weight: 600;
+}
+.menu-empty {
+  padding: 8px 10px;
+  color: #9aa1a9;
+  font-size: 12.5px;
 }
 .model-options-scroll {
   max-height: min(176px, calc(60vh - 150px));

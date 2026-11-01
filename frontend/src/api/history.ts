@@ -172,3 +172,27 @@ export async function fetchThreadTurns(
   }
   return result.data ?? []
 }
+
+/** 检索命中的会话 */
+export interface SearchHit {
+  // 会话标识
+  thread_id: string
+  // 会话标题
+  title: string
+  // 最后活动时间，ISO-8601 UTC
+  updated_at: string
+  // 会话工作空间绝对路径，未创建时为空
+  workspace: string | null
+}
+
+/** 按关键词检索会话标题、标识与消息内容，按最后活动时间倒序 */
+export async function searchThreads(keyword: string, limit = 20): Promise<SearchHit[]> {
+  const result = await requestUtil.get<ApiResult<SearchHit[]>>('/api/chat/search', {
+    params: { q: keyword, limit },
+  })
+
+  if (result.code !== 200) {
+    throw new Error(result.message || '检索会话失败')
+  }
+  return result.data ?? []
+}

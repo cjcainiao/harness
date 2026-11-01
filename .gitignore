@@ -73,7 +73,8 @@ junit*.xml
 .pytype/
 .pyre/
 .pylint.d/
-build/
+# 仅忽略后端打包目录，仓库根的 build/ 放构建部署脚本
+backend/build/
 develop-eggs/
 downloads/
 eggs/
@@ -145,3 +146,7 @@ frontend/storybook-static/
 .vercel/
 .netlify/
 frontend/*.tgz
+
+# ============ build（部署打包） ============
+# build/ 下的脚本、Dockerfile、nginx.conf 入库；output 每次打包重新生成
+build/output/

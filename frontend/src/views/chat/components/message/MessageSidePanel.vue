@@ -4,10 +4,12 @@
     id="chat-message-side-panel"
     ref="mobilePanel"
     class="side-panel"
-    :class="{ 'is-desktop-visible': desktopVisible, 'is-mobile-open': mobileOpen }"
+    :class="{ 'is-desktop-visible': visible, 'is-mobile-open': mobileOpen }"
     :role="mobileOpen ? 'dialog' : undefined"
     :aria-modal="mobileOpen ? 'true' : undefined"
     :aria-label="title"
+    :inert="!visible && !mobileOpen"
+    :aria-hidden="!visible && !mobileOpen ? 'true' : undefined"
     @keydown="onPanelKeydown"
   >
     <button
@@ -106,14 +108,19 @@ import { useChatImagesStore } from '@/stores/chatImages'
 import { useChatSessionsStore } from '@/stores/chatSessions'
 
 const props = withDefaults(
-  defineProps<{ threadId: string; title?: string; showMobileTrigger?: boolean }>(),
-  { title: '会话信息', showMobileTrigger: true },
+  defineProps<{
+    threadId: string
+    title?: string
+    showMobileTrigger?: boolean
+    visible?: boolean
+  }>(),
+  { title: '会话信息', showMobileTrigger: true, visible: false },
 )
+const emit = defineEmits<{ 'update:visible': [visible: boolean] }>()
 const chatSessions = useChatSessionsStore()
 const chatImages = useChatImagesStore()
 
 const mobileOpen = ref(false)
-const desktopVisible = ref(false)
 const galleryError = computed(() => chatImages.hasError(props.threadId))
 const failedThumbnails = ref(new Set<string>())
 const previewImageId = ref<string | null>(null)
@@ -122,7 +129,7 @@ const mobileTrigger = ref<HTMLButtonElement | null>(null)
 const mobilePanel = ref<HTMLElement | null>(null)
 const closeButton = ref<HTMLButtonElement | null>(null)
 let mobileQuery: MediaQueryList | null = null
-let widthObserver: ResizeObserver | null = null
+let sizeObserver: ResizeObserver | null = null
 let activePointerId: number | null = null
 let dragStartY = 0
 let dragStartPosition = 0.5
@@ -229,6 +236,7 @@ function onTriggerClick(event: MouseEvent): void {
   }
   suppressClick = false
   openMobile()
+  emit('update:visible', true)
 }
 
 function openMobile(): void {
@@ -238,8 +246,19 @@ function openMobile(): void {
 
 function closeMobile(restoreFocus = true): void {
   mobileOpen.value = false
+  emit('update:visible', false)
   if (restoreFocus) void nextTick(() => mobileTrigger.value?.focus())
 }
+
+// 顶栏图标控制开合：移动端同步抽屉状态
+watch(
+  () => props.visible,
+  (visible) => {
+    if (!mobileQuery?.matches) return
+    if (visible) openMobile()
+    else if (mobileOpen.value) closeMobile(false)
+  },
+)
 
 // 面板打开时将键盘焦点留在面板内
 function onPanelKeydown(event: KeyboardEvent): void {
@@ -276,44 +295,56 @@ onMounted(() => {
   window.addEventListener('keydown', onEscape)
   const messageArea = mobilePanel.value?.parentElement
   if (messageArea) {
-    widthObserver = new ResizeObserver(() => {
-      desktopVisible.value = messageArea.getBoundingClientRect().width >= 1600
+    sizeObserver = new ResizeObserver(() => {
       triggerPosition.value = clampTriggerPosition(triggerPosition.value)
     })
-    widthObserver.observe(messageArea)
+    sizeObserver.observe(messageArea)
   }
 })
 
 onUnmounted(() => {
   mobileQuery?.removeEventListener('change', onBreakpointChange)
   window.removeEventListener('keydown', onEscape)
-  widthObserver?.disconnect()
+  sizeObserver?.disconnect()
 })
 </script>
 
 <style scoped>
 .side-panel {
-  position: absolute;
-  z-index: 3;
-  inset: 16px 16px 16px auto;
   display: none;
+  flex: none;
   flex-direction: column;
-  width: 268px;
+  width: 0;
+  height: 100%;
   overflow: hidden;
-  border: 1px solid #e7e9ec;
+  border-left: 1px solid transparent;
   background: #fff;
-  box-shadow: 0 8px 28px rgb(25 34 45 / 7%);
 }
-.side-panel.is-desktop-visible {
-  display: flex;
+/* 桌面端由顶栏图标开合，宽度过渡与左侧栏一致 */
+@media (min-width: 701px) {
+  .side-panel {
+    display: flex;
+    transition:
+      width 0.2s ease,
+      border-color 0.2s ease;
+  }
+  .side-panel.is-desktop-visible {
+    width: clamp(260px, 24vw, 340px);
+    border-left-color: #e7e9ec;
+  }
+  /* 收起时保持内容原宽，跟着面板裁切，不做逐帧挤压 */
+  .panel-header,
+  .panel-body {
+    min-width: clamp(260px, 24vw, 340px);
+  }
 }
 .panel-header {
   display: flex;
   flex: none;
   align-items: center;
-  min-height: 48px;
+  min-height: 44px;
   padding: 0 14px;
-  border-bottom: 1px solid #eff0f2;
+  border-bottom: 1px solid #e8e9eb;
 }
 .panel-header h2 {
   color: #30363d;

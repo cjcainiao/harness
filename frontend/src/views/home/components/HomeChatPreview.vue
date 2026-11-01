@@ -47,6 +47,7 @@
           <FolderClosed class="session-icon" :size="16" :stroke-width="1.6" aria-hidden="true" />
           <span class="session-title">{{ title }}</span>
         </div>
+        <PanelRight class="header-icon-end" :size="16" :stroke-width="1.6" aria-hidden="true" />
       </header>
       <!-- 消息区 -->
       <div ref="scrollRef" class="message-scroll" @scroll="onScroll">
@@ -189,6 +190,7 @@ import {
   LoaderCircle,
   MessageSquare,
   PanelLeftClose,
+  PanelRight,
   Plus,
   Search,
   Settings,
@@ -685,6 +687,11 @@ onUnmounted(() => {
 }
 .session-icon {
   flex-shrink: 0;
+  color: #565d64;
+}
+.header-icon-end {
+  flex-shrink: 0;
+  margin-left: 12px;
   color: #565d64;
 }
 .session-title {

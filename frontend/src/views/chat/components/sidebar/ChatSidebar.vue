@@ -111,7 +111,7 @@
       </ElPopover>
     </footer>
     <!-- 搜索弹窗 -->
-    <ConversationSearch v-model:visible="searchVisible" />
+    <ConversationSearch v-model:visible="searchVisible" @select="openThread" />
   </aside>
 </template>
 
@@ -151,6 +151,14 @@ const chatSessions = useChatSessionsStore()
 
 const isSettingsOpen = ref(false)
 const searchVisible = ref(false)
+
+// 打开检索命中的会话
+function openThread(threadId: string): void {
+  searchVisible.value = false
+  void router.push({ name: 'chat-index', query: { thread_id: threadId } })
+  // 移动端侧栏是盖在对话区上的抽屉，选完直接收起
+  if (document.documentElement.clientWidth <= 700) emit('collapse-sidebar')
+}
 // 气泡挂在 body 上，侧栏不可见时必须显式关闭
 const settingsVisible = computed({
   get: () => isSettingsOpen.value && props.sidebarVisible,

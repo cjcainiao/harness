@@ -91,6 +91,37 @@ FROM chat_thread
 WHERE id = ?
 """
 
+# 关键词检索：标题、会话标识或任一轮次正文命中
+SQL_SEARCH_THREADS = """
+SELECT id AS thread_id, title, created_at, updated_at
+FROM chat_thread
+WHERE title LIKE ? ESCAPE '\\'
+   OR id LIKE ? ESCAPE '\\'
+   OR EXISTS (
+       SELECT 1 FROM chat_turn
+       WHERE chat_turn.thread_id = chat_thread.id
+         AND (question LIKE ? ESCAPE '\\' OR items_json LIKE ? ESCAPE '\\')
+   )
+ORDER BY updated_at DESC, id DESC
+LIMIT ?
+"""
+
+# 检索结果往前翻一页，同一时间按标识打破平局
+SQL_SEARCH_THREADS_BEFORE = """
+SELECT id AS thread_id, title, created_at, updated_at
+FROM chat_thread
+WHERE (title LIKE ? ESCAPE '\\'
+   OR id LIKE ? ESCAPE '\\'
+   OR EXISTS (
+       SELECT 1 FROM chat_turn
+       WHERE chat_turn.thread_id = chat_thread.id
+         AND (question LIKE ? ESCAPE '\\' OR items_json LIKE ? ESCAPE '\\')
+   ))
+  AND (updated_at < ? OR (updated_at = ? AND id < ?))
+ORDER BY updated_at DESC, id DESC
+LIMIT ?
+"""
+
 # 删除会话主记录
 SQL_DELETE_THREAD = "DELETE FROM chat_thread WHERE id = ?"
 
@@ -148,6 +179,11 @@ WHERE thread_id = ? AND status = ? AND (? IS NULL OR id != ?)
 ORDER BY seq DESC
 LIMIT ?
 """
+
+
+# 转义 LIKE 通配符，让关键词按字面量匹配
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 # UTC 时间戳，ISO-8601 带 Z
@@ -330,6 +366,25 @@ async def list_threads(
     else:
         sql = SQL_SELECT_THREADS_BEFORE
         params = (before[0], before[0], before[1], limit)
+
+    async with open_history_db() as conn:
+        async with conn.execute(sql, params) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+# 关键词检索会话，命中标题、标识或任一轮次正文
+async def search_threads(
+    keyword: str,
+    limit: int,
+    before: tuple[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    pattern = f"%{_escape_like(keyword)}%"
+    if before is None:
+        sql, params = SQL_SEARCH_THREADS, (pattern, pattern, pattern, pattern, limit)
+    else:
+        sql = SQL_SEARCH_THREADS_BEFORE
+        params = (pattern, pattern, pattern, pattern, before[0], before[0], before[1], limit)
 
     async with open_history_db() as conn:
         async with conn.execute(sql, params) as cursor:

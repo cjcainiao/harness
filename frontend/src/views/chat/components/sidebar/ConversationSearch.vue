@@ -22,6 +22,7 @@
         @keydown.esc="close"
         @keydown.up.prevent="moveSelection(-1)"
         @keydown.down.prevent="moveSelection(1)"
+        @keydown.enter.prevent="openActive"
       >
         <div class="search-field">
           <Search class="search-field-icon" :size="17" :stroke-width="1.8" aria-hidden="true" />
@@ -42,7 +43,7 @@
             <span class="hint-label">选择</span>
             <kbd class="key-cap">Enter</kbd>
             <span class="hint-label">打开</span>
-            <span class="hint-count">{{ rows.length }} 个</span>
+            <span class="hint-count">{{ loading ? '检索中' : `${rows.length} 个` }}</span>
           </span>
         </div>
         <div class="search-results" role="listbox" aria-label="搜索结果">
@@ -57,11 +58,13 @@
             :aria-selected="index === activeIndex"
             @mouseenter="activeIndex = index"
             @mousedown.prevent
+            @click="open(row)"
           >
             <span class="result-title">{{ row.title }}</span>
             <span class="result-meta">{{ row.meta }}</span>
             <span class="result-time">{{ row.time }}</span>
           </button>
+          <p v-if="stateText" class="result-state">{{ stateText }}</p>
         </div>
       </section>
     </Transition>
@@ -70,11 +73,15 @@
 
 <script setup lang="ts">
 import { Search } from 'lucide-vue-next'
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
+import { searchThreads } from '@/api/history'
 
 const props = defineProps<{ visible: boolean }>()
-const emit = defineEmits<{ 'update:visible': [visible: boolean] }>()
+const emit = defineEmits<{
+  'update:visible': [visible: boolean]
+  select: [threadId: string]
+}>()
 
 interface SearchRow {
   id: string
@@ -83,66 +90,125 @@ interface SearchRow {
   time: string
 }
 
-// 静态示例行，接后端后替换
-const rows: SearchRow[] = [
-  {
-    id: '1',
-    title: '你好',
-    meta: 'harness · Local · C:\\workspace\\project\\harness',
-    time: '09:45',
-  },
-  {
-    id: '2',
-    title: '项目解析',
-    meta: 'harness · Local · C:\\workspace\\project\\harness',
-    time: '9月29日',
-  },
-  {
-    id: '3',
-    title: '项目整体解析',
-    meta: 'harness · Local · C:\\workspace\\project\\harness',
-    time: '9月29日',
-  },
-  {
-    id: '4',
-    title: '解析整个项目',
-    meta: 'harness · Local · C:\\workspace\\project\\harness',
-    time: '9月28日',
-  },
-  {
-    id: '5',
-    title: '项目解析',
-    meta: 'harness · Local · C:\\workspace\\project\\harness',
-    time: '9月24日',
-  },
-  {
-    id: '6',
-    title: '瘦长的浅棕与米白短毛沙漠小型哺乳动物，深色眼睛与短耳',
-    meta: '无 Workspace · Local · C:\\Users\\laizh\\Documents',
-    time: '9月24日',
-  },
-  {
-    id: '7',
-    title: '你好',
-    meta: '无 Workspace · Local · C:\\Users\\laizh\\Documents',
-    time: '9月24日',
-  },
-]
+// 输入停顿多久才发检索请求
+const SEARCH_DEBOUNCE_MS = 180
 
 const keyword = ref('')
+const hits = ref<Array<{ threadId: string; title: string; workspace: string; updatedAt: string }>>(
+  [],
+)
+const loading = ref(false)
+const failed = ref(false)
 const activeIndex = ref(0)
 const rowRefs = ref<Array<HTMLElement | null>>([])
 const keywordInputRef = ref<HTMLInputElement | null>(null)
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
+// 后到的响应不能覆盖新关键词的结果
+let requestSeq = 0
+
+const rows = computed<SearchRow[]>(() =>
+  hits.value.map((hit) => ({
+    id: hit.threadId,
+    title: hit.title,
+    meta: hit.workspace ? `Local · ${hit.workspace}` : '无 Workspace',
+    time: formatHitTime(hit.updatedAt),
+  })),
+)
+
+// 结果为空时的说明文案，有结果时不显示
+const stateText = computed(() => {
+  if (failed.value) return '检索失败，请重试'
+  if (!keyword.value.trim()) return '输入关键词检索任务标题、内容或会话 ID'
+  if (loading.value) return '检索中…'
+  if (!hits.value.length) return '没有匹配的任务'
+  return ''
+})
+
+function formatHitTime(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const now = new Date()
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  if (sameDay) return `${pad(date.getHours())}:${pad(date.getMinutes())}`
+  return `${date.getMonth() + 1}月${date.getDate()}日`
+}
+
+function pad(value: number): string {
+  return value < 10 ? `0${value}` : `${value}`
+}
+
+function cancelTimer(): void {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = null
+}
+
+function resetResults(): void {
+  cancelTimer()
+  requestSeq += 1
+  hits.value = []
+  loading.value = false
+  failed.value = false
+  activeIndex.value = 0
+  rowRefs.value = []
+}
+
+// 关键词变化后延迟触发检索，空关键词直接清空结果
+function scheduleSearch(): void {
+  cancelTimer()
+  const value = keyword.value.trim()
+  if (!value) {
+    hits.value = []
+    loading.value = false
+    failed.value = false
+    activeIndex.value = 0
+    return
+  }
+  loading.value = true
+  failed.value = false
+  debounceTimer = setTimeout(() => void runSearch(value), SEARCH_DEBOUNCE_MS)
+}
+
+async function runSearch(value: string): Promise<void> {
+  const current = ++requestSeq
+  try {
+    const items = await searchThreads(value)
+    if (current !== requestSeq) return
+    hits.value = items.map((item) => ({
+      threadId: item.thread_id,
+      title: item.title,
+      workspace: item.workspace ?? '',
+      updatedAt: item.updated_at,
+    }))
+    activeIndex.value = 0
+    failed.value = false
+  } catch {
+    if (current !== requestSeq) return
+    hits.value = []
+    failed.value = true
+  } finally {
+    if (current === requestSeq) loading.value = false
+  }
+}
+
+watch(keyword, scheduleSearch)
 
 watch(
   () => props.visible,
   (visible) => {
-    if (!visible) return
-    activeIndex.value = 0
-    rowRefs.value = []
+    if (!visible) {
+      cancelTimer()
+      return
+    }
+    keyword.value = ''
+    resetResults()
     void nextTick(() => keywordInputRef.value?.focus())
   },
 )
+
+onUnmounted(cancelTimer)
 
 function setRowRef(element: Element | ComponentPublicInstance | null, index: number): void {
   rowRefs.value[index] = element instanceof HTMLElement ? element : null
@@ -150,10 +216,21 @@ function setRowRef(element: Element | ComponentPublicInstance | null, index: num
 
 // 键盘选择循环移动，并保持选中项可见
 function moveSelection(direction: number): void {
-  const count = rows.length
+  const count = rows.value.length
   if (!count) return
   activeIndex.value = (activeIndex.value + direction + count) % count
   void nextTick(() => rowRefs.value[activeIndex.value]?.scrollIntoView({ block: 'nearest' }))
+}
+
+function open(row: SearchRow): void {
+  emit('select', row.id)
+  close()
+}
+
+// 回车打开当前选中项
+function openActive(): void {
+  const row = rows.value[activeIndex.value]
+  if (row) open(row)
 }
 
 function close(): void {
@@ -272,6 +349,11 @@ function close(): void {
 .search-results::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: #e2e2e2;
+}
+.result-state {
+  padding: 22px 14px;
+  color: #9ca3af;
+  font-size: 12.5px;
 }
 .result-row {
   display: grid;
