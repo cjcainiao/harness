@@ -1,4 +1,17 @@
-# Harness
+<div align="center">
+  <img src="docs/logo.png" alt="Harness 图标" width="112" />
+  <h1>Harness</h1>
+  <p>面向 AI 智能体学习与实践的全栈项目</p>
+  <p>
+    <a href="#技术栈"><img src="https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.12+" /></a>
+    <a href="#技术栈"><img src="https://img.shields.io/badge/Vue-3-4FC08D?style=flat-square&amp;logo=vuedotjs&amp;logoColor=white" alt="Vue 3" /></a>
+    <a href="#技术栈"><img src="https://img.shields.io/badge/TypeScript-6-3178C6?style=flat-square&amp;logo=typescript&amp;logoColor=white" alt="TypeScript 6" /></a>
+    <a href="#技术栈"><img src="https://img.shields.io/badge/FastAPI-0.141%2B-009688?style=flat-square&amp;logo=fastapi&amp;logoColor=white" alt="FastAPI 0.141+" /></a>
+    <a href="#技术栈"><img src="https://img.shields.io/badge/LangGraph-Agent-1C3C3C?style=flat-square&amp;logo=langchain&amp;logoColor=white" alt="LangGraph Agent" /></a>
+    <a href="#技术栈"><img src="https://img.shields.io/badge/SQLite-Storage-003B57?style=flat-square&amp;logo=sqlite&amp;logoColor=white" alt="SQLite Storage" /></a>
+  </p>
+  <p><a href="https://github.com/cjcainiao/harness"><img src="https://img.shields.io/badge/GitHub-Repository-181717?style=flat-square&amp;logo=github&amp;logoColor=white" alt="GitHub 仓库" /></a></p>
+</div>
 
 Harness 是一个用于学习和实践 AI 智能体的全栈项目。它把流式对话、模型接入、工具调用、技能包、MCP 服务和知识库集中到一个 Web 应用中，便于观察一次提问如何经过前端、接口、智能体和工具，最终返回结果。
 
@@ -168,6 +181,7 @@ npm run dev
 
 ```text
 harness/
+├── docs/logo.png          # README 顶部使用的项目图标
 ├── backend/
 │   ├── app/core/
 │   │   ├── gateway/       # chat、config、knowledge HTTP 路由
