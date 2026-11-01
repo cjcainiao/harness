@@ -5,7 +5,8 @@
 ## 准备
 
 - 前端已安装依赖；尚未安装时，在 `frontend` 目录运行 `npm ci`。
-- 后端已有 `backend/config.yaml` 和 `backend/.env`；`.env` 中需配置 `DEEPSEEK_API_KEY` 等服务密钥。
+- 后端已有 `backend/.env`，其中需配置 `DEEPSEEK_API_KEY` 等服务密钥。
+- 后端配置取 `backend/config.yaml`；该文件不入库，缺失时脚本自动改用 `backend/config.example.yaml`，请在打包前确认配置内容与密钥引用正确。
 - 部署服务器已安装 Docker 和 Docker Compose。
 
 ## 本地打包
@@ -26,7 +27,9 @@ bash build/build.sh
 
 ```text
 build/output/
-├─ backend/             后端代码、配置目录、环境变量和依赖锁文件
+├─ backend/             后端代码、配置、环境变量和依赖锁文件
+│  ├─ config.yaml       直接运行时的默认配置
+│  └─ config/           容器挂载用的配置目录
 ├─ frontend/            前端静态文件
 ├─ Dockerfile           后端镜像构建文件
 ├─ docker-compose.yaml  双容器编排
@@ -43,7 +46,7 @@ build/output/
 docker compose up -d --build
 ```
 
-前端地址为 `http://服务器地址:90/`，后端健康检查为 `http://服务器地址:9000/health`。宿主机端口分别映射到前端容器的 `80` 和后端容器的 `8000`；Nginx 将前端的 `/api` 请求转发到同一 Compose 网络中的 `backend:8000`。
+前端地址为 `http://服务器地址/`，后端健康检查为 `http://服务器地址:8000/health`。宿主机端口分别映射到前端容器的 `80` 和后端容器的 `8000`；Nginx 将前端的 `/api` 请求转发到同一 Compose 网络中的 `backend:8000`。
 
 ## 挂载与配置
 

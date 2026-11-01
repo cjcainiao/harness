@@ -38,4 +38,4 @@ RUN groupadd --system harness \
 USER harness
 EXPOSE 8000
 
-CMD ["python", "-m", "app.main"]
+CMD ["python", "-m", "app.core.main"]

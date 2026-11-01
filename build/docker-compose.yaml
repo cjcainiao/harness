@@ -5,17 +5,18 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      # Dockerfile 在产物根目录，路径按构建上下文解析
+      dockerfile: ../Dockerfile
     image: harness-backend:latest
     restart: unless-stopped
     ports:
-      - "9000:8000"
+      - "8000:8000"
     volumes:
-      - backend_data:/app/data
-      - backend_logs:/app/logs
+      - ./data:/app/data
+      - ./logs:/app/logs
       # 配置整目录挂载，单文件挂载会让原子替换失败
       - ./backend/config:/app/config
-      - backend_skills:/app/skills/public
+      - ./skills:/app/skills/public
 
   frontend:
     image: nginx:stable-alpine
@@ -23,7 +24,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "90:80"
+      - "80:80"
     volumes:
       - ./frontend:/usr/share/nginx/html:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro

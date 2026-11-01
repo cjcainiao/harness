@@ -30,16 +30,25 @@ finish() {
 trap finish EXIT
 
 # 后端入口与运行文件校验
-if [[ ! -f "$BACKEND_SOURCE/app/main.py" ]]; then
-    printf 'Backend source was not found: %s\n' "$BACKEND_SOURCE" >&2
+if [[ ! -f "$BACKEND_SOURCE/app/core/main.py" ]]; then
+    printf 'Backend entry was not found: %s\n' "$BACKEND_SOURCE/app/core/main.py" >&2
     exit 1
 fi
-for file in pyproject.toml uv.lock .python-version config.yaml .env; do
+for file in pyproject.toml uv.lock .python-version .env; do
     if [[ ! -f "$BACKEND_SOURCE/$file" ]]; then
         printf 'Required backend file is missing: %s\n' "$file" >&2
         exit 1
     fi
 done
+# 本地配置不入库，缺失时用示例配置顶上
+CONFIG_SOURCE="$BACKEND_SOURCE/config.yaml"
+if [[ ! -f "$CONFIG_SOURCE" ]]; then
+    CONFIG_SOURCE="$BACKEND_SOURCE/config.example.yaml"
+fi
+if [[ ! -f "$CONFIG_SOURCE" ]]; then
+    printf 'Required backend file is missing: config.yaml\n' >&2
+    exit 1
+fi
 for dir in app harness skills; do
     if [[ ! -d "$BACKEND_SOURCE/$dir" ]]; then
         printf 'Required backend directory is missing: %s\n' "$dir" >&2
@@ -90,9 +99,10 @@ for file in pyproject.toml uv.lock .python-version .env; do
     cp -p "$BACKEND_SOURCE/$file" "$BACKEND_TARGET/$file"
 done
 
-# 配置放目录里，配置页保存要能原子替换
+# 配置放目录里，配置页保存要能原子替换；根目录再放一份供直接运行
 mkdir -p "$BACKEND_TARGET/config"
-cp -p "$BACKEND_SOURCE/config.yaml" "$BACKEND_TARGET/config/config.yaml"
+cp -p "$CONFIG_SOURCE" "$BACKEND_TARGET/config/config.yaml"
+cp -p "$CONFIG_SOURCE" "$BACKEND_TARGET/config.yaml"
 
 # 技能运行时安装，保留挂载点
 mkdir -p "$BACKEND_TARGET/skills/public"

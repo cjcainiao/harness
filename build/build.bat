@@ -12,15 +12,24 @@ set "BACKEND_TARGET=%RELEASE_DIR%\backend"
 set "FRONTEND_TARGET=%RELEASE_DIR%\frontend"
 
 rem 后端入口与运行文件校验
-if not exist "%BACKEND_SOURCE%\app\main.py" (
-    echo Backend source was not found: "%BACKEND_SOURCE%"
+if not exist "%BACKEND_SOURCE%\app\core\main.py" (
+    echo Backend entry was not found: "%BACKEND_SOURCE%\app\core\main.py"
     goto :failed
 )
-for %%F in (pyproject.toml uv.lock .python-version config.yaml .env) do (
+for %%F in (pyproject.toml uv.lock .python-version .env) do (
     if not exist "%BACKEND_SOURCE%\%%F" (
         echo Required backend file is missing: %%F
         goto :failed
     )
+)
+rem 本地配置不入库，缺失时用示例配置顶上
+set "CONFIG_SOURCE=%BACKEND_SOURCE%\config.yaml"
+if not exist "%CONFIG_SOURCE%" (
+    set "CONFIG_SOURCE=%BACKEND_SOURCE%\config.example.yaml"
+)
+if not exist "%CONFIG_SOURCE%" (
+    echo Required backend file is missing: config.yaml
+    goto :failed
 )
 for %%D in (app harness skills) do (
     if not exist "%BACKEND_SOURCE%\%%D\" (
@@ -58,10 +67,12 @@ for %%F in (pyproject.toml uv.lock .python-version .env) do (
     if errorlevel 1 goto :failed
 )
 
-rem 配置放目录里，配置页保存要能原子替换
+rem 配置放目录里，配置页保存要能原子替换；根目录再放一份供直接运行
 if not exist "%BACKEND_TARGET%\config" mkdir "%BACKEND_TARGET%\config" >nul 2>&1
 if errorlevel 1 goto :failed
-copy /Y "%BACKEND_SOURCE%\config.yaml" "%BACKEND_TARGET%\config\config.yaml" >nul
+copy /Y "%CONFIG_SOURCE%" "%BACKEND_TARGET%\config\config.yaml" >nul
+if errorlevel 1 goto :failed
+copy /Y "%CONFIG_SOURCE%" "%BACKEND_TARGET%\config.yaml" >nul
 if errorlevel 1 goto :failed
 
 rem 技能运行时安装，保留挂载点

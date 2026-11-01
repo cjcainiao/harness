@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/logo.png" alt="Harness 图标" width="112" />
+  <img src="frontend/src/assets/images/logo.png" alt="Harness 图标" width="112" />
   <h1>Harness</h1>
   <p>面向 AI 智能体学习与实践的全栈项目</p>
   <p>
@@ -181,7 +181,6 @@ npm run dev
 
 ```text
 harness/
-├── docs/logo.png          # README 顶部使用的项目图标
 ├── backend/
 │   ├── app/core/
 │   │   ├── gateway/       # chat、config、knowledge HTTP 路由
@@ -199,6 +198,7 @@ harness/
 │   ├── config.example.yaml
 │   └── pyproject.toml
 ├── frontend/
+│   ├── src/assets/images/logo.png  # README 顶部使用的项目图标
 │   ├── src/views/         # home、chat、config、knowledge 页面
 │   ├── src/api/           # 接口请求封装
 │   ├── src/stores/        # Pinia 状态
@@ -249,7 +249,7 @@ npm run preview      # 预览已构建的前端
 
 仓库的 `build/` 目录包含 Windows、Linux/macOS 打包脚本、Nginx 配置及 Docker Compose 文件。目标目录和端口设计见 [构建与部署文档](build/README.md)。
 
-**当前需要先修正部署脚本再使用：**`build/build.bat` 与 `build/build.sh` 仍检查旧入口 `backend/app/main.py`，而实际入口为 `backend/app/core/main.py`；部署用的 `build/Dockerfile` 也仍以 `app.main` 启动。现有打包流程不能直接作为可运行的部署方案。
+打包脚本会把 `backend/config.yaml` 复制到产物的 `backend/config.yaml` 与 `backend/config/config.yaml` 两处：前者供直接运行，后者按目录挂载给容器，保证配置页保存时的原子替换不会跨设备失败。`backend/config.yaml` 不入库，缺失时脚本自动改用 `backend/config.example.yaml`，部署前需要自行补上真实的密钥与监听地址。
 
 ## 常见问题
 
